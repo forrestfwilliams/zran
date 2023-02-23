@@ -1,6 +1,6 @@
 from posix.types cimport off_t
 from libc.stdio cimport FILE
-from cython import ptrdiff_t
+from cython import ptrdiff_t, list
 
 cdef extern from "zran.h":
 

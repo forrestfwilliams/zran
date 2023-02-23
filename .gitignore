@@ -1,2 +1,4 @@
 build/*
 s1a-iw2-slc-vv-20200604t022253-20200604t022318-032861-03ce65-005.tiff.gz
+__pycache__/*
+zran/zranlib.c
