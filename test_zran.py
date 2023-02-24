@@ -31,6 +31,4 @@ def test_extract():
         f.write(compressed)
 
     test_data = zran.extract_data(compressed_file.name, start, length)
-    # TODO null byte in data terminates data
-    print(len(test_data))
-    assert data[start : start + len(test_data)] == test_data
+    assert data[start : start + length] == test_data

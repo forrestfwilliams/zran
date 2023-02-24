@@ -72,9 +72,12 @@ def extract_data(str filename, off_t offset, off_t length, off_t span = 2**20):
     try:
         rtc1 = czran.deflate_index_build(infile, span, &built)
         rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
+        python_data = data[:length]
     finally:
+        # Deallocate C Objects
         czran.deflate_index_free(built)
+        fclose(infile)
+        free(data)
 
-    fclose(infile)
-    return data
+    return python_data
 
