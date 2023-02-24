@@ -3,12 +3,16 @@ import cython
 from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose
 cimport czran
+from collections import namedtuple
+
+WINDOW_LENGTH = 32768
+Point = namedtuple("Point", "outloc inloc bits window")
 
 
 cdef class WrapperDeflateIndex:
     cdef czran.deflate_index *_ptr
     cdef bint ptr_owner
-    
+
     def __cinit__(self):
         self.ptr_owner = False
 
@@ -37,7 +41,12 @@ cdef class WrapperDeflateIndex:
         if self._ptr is not NULL:
             result = []
             for i in range(self.have):
-                result.append(self._ptr.list[i])
+                point = Point(self._ptr.list[i].outloc,
+                              self._ptr.list[i].inloc,
+                              self._ptr.list[i].bits,
+                              self._ptr.list[i].window[:WINDOW_LENGTH]
+                              )
+                result.append(point)
         else:
             result = None
         return result
@@ -80,4 +89,3 @@ def extract_data(str filename, off_t offset, off_t length, off_t span = 2**20):
         free(data)
 
     return python_data
-

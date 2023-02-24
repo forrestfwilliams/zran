@@ -2,13 +2,9 @@ import os
 import tempfile
 import zlib
 
-import pytest
-
 import zran
 
 
-# TODO null byte in data terminates window
-@pytest.mark.xfail()
 def test_index():
     data = os.urandom(2**24)
     compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
@@ -17,8 +13,11 @@ def test_index():
         f.write(compressed)
 
     index = zran.build_deflate_index(compressed_file.name)
-
-    assert len(index[3]['window']) == 32768
+    points = index.points
+    assert points[0].outloc == 0
+    assert points[0].inloc == 10
+    assert points[0].bits == 0
+    assert len(points[0].window) == 32768
 
 
 def test_extract():
