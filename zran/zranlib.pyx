@@ -1,6 +1,6 @@
 from posix.types cimport off_t
 import cython
-from libc.stdlib  cimport free
+from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose
 cimport czran
 
@@ -61,3 +61,20 @@ def build_deflate_index(str filename, off_t span = 2**20):
         czran.deflate_index_free(built)
 
     return index
+
+
+def extract_data(str filename, off_t offset, off_t length, off_t span = 2**20):
+    cdef FILE *infile = fopen(filename.encode(), b"rb")
+
+    cdef czran.deflate_index *built
+    cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
+
+    try:
+        rtc1 = czran.deflate_index_build(infile, span, &built)
+        rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
+    finally:
+        czran.deflate_index_free(built)
+
+    fclose(infile)
+    return data
+

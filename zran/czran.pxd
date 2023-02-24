@@ -1,6 +1,6 @@
 from posix.types cimport off_t
 from libc.stdio cimport FILE
-from cython import ptrdiff_t, list
+from cython import ptrdiff_t
 
 cdef extern from "zran.h":
 
@@ -17,4 +17,8 @@ cdef extern from "zran.h":
         point_t *list
 
     int deflate_index_build(FILE *infile, off_t span, deflate_index **built)
+
+    ptrdiff_t deflate_index_extract(FILE *infile, deflate_index *index,
+                                    off_t offset, unsigned char *buf, size_t len)
+
     void deflate_index_free(deflate_index *index);
