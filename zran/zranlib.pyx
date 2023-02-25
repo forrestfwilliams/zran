@@ -4,6 +4,8 @@ from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose
 cimport czran
 from collections import namedtuple
+from operator import attrgetter
+import struct as py_struct
 
 WINDOW_LENGTH = 32768
 Point = namedtuple("Point", "outloc inloc bits window")
@@ -57,6 +59,35 @@ cdef class WrapperDeflateIndex:
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
         return wrapper
+
+    def to_file(self, filename):
+        header = b"DFLIDX" + py_struct.pack("<IQI", self.mode, self.length, self.have)
+        sorted_points = sorted(self.points, key=attrgetter("outloc"))
+        point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
+        window_data = [x.window for x in sorted_points]
+        dflidx = header + b"".join(point_data) + b"".join(window_data)
+        with open(filename, "wb") as f:
+            f.write(dflidx)
+    
+    @staticmethod
+    def parse_dflidx(dflidx: bytes):
+        header_length = 22
+        point_length = 17
+        mode, length, have = py_struct.unpack("<IQI", dflidx[6:header_length])
+        point_end = header_end + (have * point_length)
+        
+        loc_data = []
+        window_data = []
+        for i in range(have):
+            i_next = i + 1
+            loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
+            loc_data.append(py_struct.unpack('<QQB', loc_bytes))
+            
+            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
+            window_data.append(window_bytes)
+
+        points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
+        return mode, length, have, points
 
 
 def build_deflate_index(str filename, off_t span = 2**20):
