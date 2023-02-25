@@ -74,7 +74,7 @@ cdef class WrapperDeflateIndex:
         header_length = 22
         point_length = 17
         mode, length, have = py_struct.unpack("<IQI", dflidx[6:header_length])
-        point_end = header_end + (have * point_length)
+        point_end = header_length + (have * point_length)
         
         loc_data = []
         window_data = []
@@ -89,6 +89,32 @@ cdef class WrapperDeflateIndex:
         points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
         return mode, length, have, points
 
+    @staticmethod
+    def from_file(filename):
+        with open(filename, "rb") as f:
+            dflidx = f.read()
+        mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
+
+        cdef czran.deflate_index *_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
+        if _ptr is NULL:
+            raise MemoryError
+
+        _ptr.have = have
+        _ptr.mode = mode
+        _ptr.length = length
+
+        _ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
+        if _ptr.list is NULL:
+            raise MemoryError
+
+        for i in range(have):
+            _ptr.list[i].outloc = points[i].outloc
+            _ptr.list[i].inloc = points[i].inloc
+            _ptr.list[i].bits = points[i].bits
+            _ptr.list[i].window = points[i].window
+
+        return WrapperDeflateIndex.from_ptr(_ptr, owner=True)
+
 
 def build_deflate_index(str filename, off_t span = 2**20):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
@@ -101,6 +127,26 @@ def build_deflate_index(str filename, off_t span = 2**20):
         czran.deflate_index_free(built)
 
     return index
+
+
+def extract_from_index(str filename, str index_filename, off_t offset, int length):
+    cdef FILE *infile = fopen(filename.encode(), b"rb")
+
+    cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
+
+    index = WrapperDeflateIndex.from_file(index_filename)
+    
+    # TODO cannot pass created pointer
+    # try:
+    #     rtc = czran.deflate_index_extract(infile, index._ptr, offset, data, length)
+    #     python_data = data[:length]
+    # finally:
+    #     # Deallocate C Objects
+    #     del index
+    #     fclose(infile)
+    #     free(data)
+    #
+    # return python_data
 
 
 def extract_data(str filename, off_t offset, off_t length, off_t span = 2**20):
