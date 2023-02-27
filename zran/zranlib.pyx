@@ -91,29 +91,30 @@ cdef class WrapperDeflateIndex:
 
     @staticmethod
     def from_file(filename):
+        # TODO cannot pass created pointer
         with open(filename, "rb") as f:
             dflidx = f.read()
         mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
 
-        cdef czran.deflate_index *_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
-        if _ptr is NULL:
+        cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
+        if _new_ptr is NULL:
             raise MemoryError
 
-        _ptr.have = have
-        _ptr.mode = mode
-        _ptr.length = length
+        _new_ptr.have = have
+        _new_ptr.mode = mode
+        _new_ptr.length = length
 
-        _ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
-        if _ptr.list is NULL:
+        _new_ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
+        if _new_ptr.list is NULL:
             raise MemoryError
 
         for i in range(have):
-            _ptr.list[i].outloc = points[i].outloc
-            _ptr.list[i].inloc = points[i].inloc
-            _ptr.list[i].bits = points[i].bits
-            _ptr.list[i].window = points[i].window
+            _new_ptr.list[i].outloc = points[i].outloc
+            _new_ptr.list[i].inloc = points[i].inloc
+            _new_ptr.list[i].bits = points[i].bits
+            _new_ptr.list[i].window = points[i].window
 
-        return WrapperDeflateIndex.from_ptr(_ptr, owner=True)
+        return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
 def build_deflate_index(str filename, off_t span = 2**20):
@@ -122,39 +123,32 @@ def build_deflate_index(str filename, off_t span = 2**20):
     rtc = czran.deflate_index_build(infile, span, &built)
     fclose(infile)
     try:
-        index = WrapperDeflateIndex.from_ptr(built)
+        index = WrapperDeflateIndex.from_ptr(built, owner=True)
     except:
         czran.deflate_index_free(built)
 
     return index
 
 
-def extract_from_index(str filename, str index_filename, off_t offset, int length):
+def extract_data(str filename, str index_filename, off_t offset, int length):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
-
+    cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
     cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
+    try:
+        rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+        python_data = data[:length]
+    finally:
+        # Deallocate C Objects
+        fclose(infile)
+        free(data)
 
-    index = WrapperDeflateIndex.from_file(index_filename)
-    
-    # TODO cannot pass created pointer
-    # try:
-    #     rtc = czran.deflate_index_extract(infile, index._ptr, offset, data, length)
-    #     python_data = data[:length]
-    # finally:
-    #     # Deallocate C Objects
-    #     del index
-    #     fclose(infile)
-    #     free(data)
-    #
-    # return python_data
+    return python_data
 
 
-def extract_data(str filename, off_t offset, off_t length, off_t span = 2**20):
+def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t span = 2**20):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
-
     cdef czran.deflate_index *built
     cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
-
     try:
         rtc1 = czran.deflate_index_build(infile, span, &built)
         rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)

@@ -49,11 +49,11 @@ def test_create_index_from_file():
     index.to_file(index_file.name)
     del index
 
-    index = zran.WrapperDeflateIndex.from_file(index_file.name)
-    assert index.points[0].outloc == 0
+    new_index = zran.WrapperDeflateIndex.from_file(index_file.name)
+    assert new_index.points[0].outloc == 0
 
 
-def test_extract():
+def test_extract_data_with_tmp_index():
     start = 100
     length = 1000
     data = os.urandom(2**24)
@@ -62,12 +62,11 @@ def test_extract():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    test_data = zran.extract_data(compressed_file.name, start, length)
+    test_data = zran.extract_data_with_tmp_index(compressed_file.name, start, length)
     assert data[start : start + length] == test_data
 
 
-@pytest.mark.skip()
-def test_extract_from_index():
+def test_extract_using_index():
     start = 100
     length = 1000
 
@@ -77,10 +76,10 @@ def test_extract_from_index():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    index_file = tempfile.NamedTemporaryFile()
     index = zran.build_deflate_index(compressed_file.name)
+    index_file = tempfile.NamedTemporaryFile()
     index.to_file(index_file.name)
     del index
 
-    test_data = zran.extract_from_index(compressed_file.name, index_file.name, start, length)
+    test_data = zran.extract_data(compressed_file.name, index_file.name, start, length)
     assert data[start : start + length] == test_data
