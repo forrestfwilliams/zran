@@ -91,7 +91,6 @@ cdef class WrapperDeflateIndex:
 
     @staticmethod
     def from_file(filename):
-        # TODO cannot pass created pointer
         with open(filename, "rb") as f:
             dflidx = f.read()
         mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
