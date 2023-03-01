@@ -11,6 +11,25 @@ import struct as py_struct
 WINDOW_LENGTH = 32768
 Point = namedtuple("Point", "outloc inloc bits window")
 
+class ZranError(Exception):
+    pass
+
+def check_for_error(return_code):
+    error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4,
+                   "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
+
+    if return_code < 0:
+        if return_code == error_codes["Z_MEM_ERROR"]:
+            raise ZranError("zran: out of memory")
+        elif return_code == error_codes["Z_BUF_ERROR"]:
+            raise ZranError("zran: input file ended prematurely")
+        elif return_code == error_codes["Z_DATA_ERROR"]:
+            raise ZranError("zran: compressed data error in input file")
+        elif return_code == error_codes["Z_ERRNO"]:
+            raise ZranError("zran: read error on input file")
+        else:
+            raise ZranError("zran: error %d while building index".format(return_code))
+
 
 cdef class WrapperDeflateIndex:
     cdef czran.deflate_index *_ptr
@@ -122,12 +141,22 @@ cdef class WrapperDeflateIndex:
 def build_deflate_index(str filename, off_t span = 2**20):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
     cdef czran.deflate_index *built
+
     rtc = czran.deflate_index_build(infile, span, &built)
     fclose(infile)
+    czran.deflate_index_free(built)
+
+    try:
+        check_for_error(rtc)
+    except ZranError as e:
+        czran.deflate_index_free(built)
+        raise e
+
     try:
         index = WrapperDeflateIndex.from_ptr(built, owner=True)
-    except:
+    except Exception as e:
         czran.deflate_index_free(built)
+        raise e
 
     return index
 

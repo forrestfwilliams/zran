@@ -22,6 +22,19 @@ def test_index():
     assert len(points[0].window) == 32768
 
 
+@pytest.mark.skip(reason="Cannot figure out how to handle errors")
+def test_build_deflate_index_fail():
+    data = os.urandom(2**24)
+    compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
+    compressed_file = tempfile.NamedTemporaryFile()
+    with open(compressed_file.name, 'wb') as f:
+        # Corrupt data on purpose
+        f.write(compressed[:-1])
+
+    with pytest.raises(zran.ZranError):
+        index = zran.build_deflate_index(compressed_file.name)
+
+
 def test_index_to_file():
     data = os.urandom(2**24)
     compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
