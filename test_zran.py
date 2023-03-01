@@ -25,7 +25,6 @@ def test_index():
     assert len(points[0].window) == 32768
 
 
-# @pytest.mark.skip(reason="Cannot figure out how to handle errors")
 def test_build_deflate_index_fail():
     data = os.urandom(2**24)
     compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
@@ -94,7 +93,8 @@ def test_extract_data_with_tmp_index():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    test_data = zran.extract_data_with_tmp_index(compressed_file.name, start, length)
+    with open(compressed_file.name, 'rb') as f:
+        test_data = zran.extract_data_with_tmp_index(f, start, length)
     assert data[start : start + length] == test_data
 
 
@@ -115,7 +115,8 @@ def test_extract_using_index():
     index.to_file(index_file.name)
     del index
 
-    test_data = zran.extract_data(compressed_file.name, index_file.name, start, length)
+    with open(compressed_file.name, 'rb') as f:
+        test_data = zran.extract_data(f, index_file.name, start, length)
     assert data[start : start + length] == test_data
 
 
@@ -131,7 +132,7 @@ def test_extract_using_index_fail():
 
     compressed_file_bad = tempfile.NamedTemporaryFile()
     with open(compressed_file_bad.name, 'wb') as f:
-        f.write(compressed[100:])
+        f.write(compressed[1000:])
 
     with open(compressed_file.name, 'rb') as f:
         index = zran.build_deflate_index(f)
@@ -141,4 +142,5 @@ def test_extract_using_index_fail():
     del index
 
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
-        zran.extract_data(compressed_file_bad.name, index_file.name, start, length)
+        with open(compressed_file_bad.name, 'rb') as f:
+            zran.extract_data(f, index_file.name, start, length)

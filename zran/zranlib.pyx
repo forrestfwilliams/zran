@@ -139,15 +139,13 @@ cdef class WrapperDeflateIndex:
 
 
 def build_deflate_index(fileobj, off_t span = 2**20):
-    # cdef FILE *infile = fopen(filename.encode(), b"rb")
     if fileobj.mode != "rb":
         raise IOError("File object must be open read-binary (rb) mode.")
-
     infile = fdopen(fileobj.fileno(), b"rb")
+
     cdef czran.deflate_index *built
     
     rtc = czran.deflate_index_build(infile, span, &built)
-    # fclose(infile)
     check_for_error(rtc)
 
     try:
@@ -159,13 +157,15 @@ def build_deflate_index(fileobj, off_t span = 2**20):
     return index
 
 
-def extract_data(str filename, str index_filename, off_t offset, int length):
-    cdef FILE *infile = fopen(filename.encode(), b"rb")
+def extract_data(fileobj, str index_filename, off_t offset, int length):
+    if fileobj.mode != "rb":
+        raise IOError("File object must be open read-binary (rb) mode.")
+    infile = fdopen(fileobj.fileno(), b"rb")
+
     cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
     
     rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
-    fclose(infile)
     
     try:
         check_for_error(rtc)
@@ -177,8 +177,11 @@ def extract_data(str filename, str index_filename, off_t offset, int length):
     return python_data
 
 
-def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t span = 2**20):
-    cdef FILE *infile = fopen(filename.encode(), b"rb")
+def extract_data_with_tmp_index(fileobj, off_t offset, off_t length, off_t span = 2**20):
+    if fileobj.mode != "rb":
+        raise IOError("File object must be open read-binary (rb) mode.")
+    infile = fdopen(fileobj.fileno(), b"rb")
+
     cdef czran.deflate_index *built
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
     
@@ -190,7 +193,6 @@ def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t 
         raise e
 
     rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
-    fclose(infile)
 
     try:
         check_for_error(rtc2)
