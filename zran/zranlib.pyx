@@ -5,6 +5,7 @@ from libc.stdio cimport FILE, fopen, fclose
 cimport czran
 from collections import namedtuple
 from operator import attrgetter
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import struct as py_struct
 
 WINDOW_LENGTH = 32768
@@ -94,7 +95,8 @@ cdef class WrapperDeflateIndex:
         with open(filename, "rb") as f:
             dflidx = f.read()
         mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
-
+        
+        # Can't use PyMem_Malloc here because free operation is controlled by C library
         cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
         if _new_ptr is NULL:
             raise MemoryError
@@ -103,6 +105,7 @@ cdef class WrapperDeflateIndex:
         _new_ptr.mode = mode
         _new_ptr.length = length
 
+        # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
         if _new_ptr.list is NULL:
             raise MemoryError
@@ -132,14 +135,14 @@ def build_deflate_index(str filename, off_t span = 2**20):
 def extract_data(str filename, str index_filename, off_t offset, int length):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
     cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
-    cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
+    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
     try:
         rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
         python_data = data[:length]
     finally:
         # Deallocate C Objects
         fclose(infile)
-        free(data)
+        PyMem_Free(data)
 
     return python_data
 
@@ -147,7 +150,7 @@ def extract_data(str filename, str index_filename, off_t offset, int length):
 def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t span = 2**20):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
     cdef czran.deflate_index *built
-    cdef unsigned char* data = <unsigned char *> malloc((length + 1) * sizeof(char))
+    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
     try:
         rtc1 = czran.deflate_index_build(infile, span, &built)
         rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
@@ -156,6 +159,6 @@ def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t 
         # Deallocate C Objects
         czran.deflate_index_free(built)
         fclose(infile)
-        free(data)
+        PyMem_Free(data)
 
     return python_data
