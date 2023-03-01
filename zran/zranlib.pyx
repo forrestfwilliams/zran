@@ -1,7 +1,7 @@
 from posix.types cimport off_t
 import cython
 from libc.stdlib  cimport free, malloc
-from libc.stdio cimport FILE, fopen, fclose
+from libc.stdio cimport FILE, fopen, fclose, fdopen
 cimport czran
 from collections import namedtuple
 from operator import attrgetter
@@ -138,12 +138,16 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def build_deflate_index(str filename, off_t span = 2**20):
-    cdef FILE *infile = fopen(filename.encode(), b"rb")
-    cdef czran.deflate_index *built
+def build_deflate_index(fileobj, off_t span = 2**20):
+    # cdef FILE *infile = fopen(filename.encode(), b"rb")
+    if fileobj.mode != "rb":
+        raise IOError("File object must be open read-binary (rb) mode.")
 
+    infile = fdopen(fileobj.fileno(), b"rb")
+    cdef czran.deflate_index *built
+    
     rtc = czran.deflate_index_build(infile, span, &built)
-    fclose(infile)
+    # fclose(infile)
     check_for_error(rtc)
 
     try:

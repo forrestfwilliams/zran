@@ -14,7 +14,10 @@ def test_index():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    index = zran.build_deflate_index(compressed_file.name)
+    # index = zran.build_deflate_index(compressed_file.name)
+    with open(compressed_file.name, 'rb') as f:
+        index = zran.build_deflate_index(f)
+
     points = index.points
     assert points[0].outloc == 0
     assert points[0].inloc == 10
@@ -34,7 +37,8 @@ def test_build_deflate_index_fail():
         f.write(compressed[100:])
 
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
-        zran.build_deflate_index(missing_head.name)
+        with open(missing_head.name, 'rb') as f:
+            zran.build_deflate_index(f)
 
     # Check missing tail
     missing_tail = tempfile.NamedTemporaryFile()
@@ -43,7 +47,8 @@ def test_build_deflate_index_fail():
         f.write(compressed[:-10])
 
     with pytest.raises(zran.ZranError, match='zran: input file ended prematurely'):
-        zran.build_deflate_index(missing_tail.name)
+        with open(missing_tail.name, 'rb') as f:
+            zran.build_deflate_index(f)
 
 
 def test_index_to_file():
@@ -53,7 +58,9 @@ def test_index_to_file():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    index = zran.build_deflate_index(compressed_file.name)
+    with open(compressed_file.name, 'rb') as f:
+        index = zran.build_deflate_index(f)
+
     index.to_file('out.dflidx')
     with open('out.dflidx', 'rb') as f:
         dflidx = f.read()
@@ -69,7 +76,8 @@ def test_create_index_from_file():
         f.write(compressed)
 
     index_file = tempfile.NamedTemporaryFile()
-    index = zran.build_deflate_index(compressed_file.name)
+    with open(compressed_file.name, 'rb') as f:
+        index = zran.build_deflate_index(f)
     index.to_file(index_file.name)
     del index
 
@@ -100,7 +108,9 @@ def test_extract_using_index():
     with open(compressed_file.name, 'wb') as f:
         f.write(compressed)
 
-    index = zran.build_deflate_index(compressed_file.name)
+    with open(compressed_file.name, 'rb') as f:
+        index = zran.build_deflate_index(f)
+
     index_file = tempfile.NamedTemporaryFile()
     index.to_file(index_file.name)
     del index
@@ -123,7 +133,9 @@ def test_extract_using_index_fail():
     with open(compressed_file_bad.name, 'wb') as f:
         f.write(compressed[100:])
 
-    index = zran.build_deflate_index(compressed_file.name)
+    with open(compressed_file.name, 'rb') as f:
+        index = zran.build_deflate_index(f)
+
     index_file = tempfile.NamedTemporaryFile()
     index.to_file(index_file.name)
     del index
