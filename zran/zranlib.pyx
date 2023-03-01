@@ -28,7 +28,7 @@ def check_for_error(return_code):
         elif return_code == error_codes["Z_ERRNO"]:
             raise ZranError("zran: read error on input file")
         else:
-            raise ZranError("zran: error %d while building index".format(return_code))
+            raise ZranError("zran: failed with error code %d".format(return_code))
 
 
 cdef class WrapperDeflateIndex:
@@ -144,13 +144,7 @@ def build_deflate_index(str filename, off_t span = 2**20):
 
     rtc = czran.deflate_index_build(infile, span, &built)
     fclose(infile)
-    czran.deflate_index_free(built)
-
-    try:
-        check_for_error(rtc)
-    except ZranError as e:
-        czran.deflate_index_free(built)
-        raise e
+    check_for_error(rtc)
 
     try:
         index = WrapperDeflateIndex.from_ptr(built, owner=True)
@@ -165,12 +159,15 @@ def extract_data(str filename, str index_filename, off_t offset, int length):
     cdef FILE *infile = fopen(filename.encode(), b"rb")
     cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
+    
+    rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+    fclose(infile)
+    
     try:
-        rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+        check_for_error(rtc)
         python_data = data[:length]
     finally:
         # Deallocate C Objects
-        fclose(infile)
         PyMem_Free(data)
 
     return python_data
@@ -180,14 +177,23 @@ def extract_data_with_tmp_index(str filename, off_t offset, off_t length, off_t 
     cdef FILE *infile = fopen(filename.encode(), b"rb")
     cdef czran.deflate_index *built
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
+    
+    rtc1 = czran.deflate_index_build(infile, span, &built)
     try:
-        rtc1 = czran.deflate_index_build(infile, span, &built)
-        rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
+        check_for_error(rtc1)
+    except ZranError as e:
+        czran.deflate_index_free(built)
+        raise e
+
+    rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
+    fclose(infile)
+
+    try:
+        check_for_error(rtc2)
         python_data = data[:length]
     finally:
         # Deallocate C Objects
         czran.deflate_index_free(built)
-        fclose(infile)
         PyMem_Free(data)
 
     return python_data
