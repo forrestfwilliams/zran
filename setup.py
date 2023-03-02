@@ -100,8 +100,8 @@ else:           pyx_ext = 'c'
 # The indexed_gzip module
 igzip_ext = Extension(
     'zran',
-    [op.join('zran', 'zranlib.{}'.format(pyx_ext)),
-     op.join('zran', 'zran.c')] + extra_srcs,
+    [op.join('src', 'zran', 'zranlib.{}'.format(pyx_ext)),
+     op.join('src', 'zran', 'zran.c')] + extra_srcs,
     libraries=libs,
     library_dirs=lib_dirs,
     include_dirs=include_dirs,
