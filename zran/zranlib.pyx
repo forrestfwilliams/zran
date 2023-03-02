@@ -81,28 +81,22 @@ cdef class WrapperDeflateIndex:
         return wrapper
 
     def to_file(self, filename):
-        header = b"DFLIDX" + py_struct.pack("<IQI", self.mode, self.length, self.have)
-        sorted_points = sorted(self.points, key=attrgetter("outloc"))
-        point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
-        window_data = [x.window for x in sorted_points]
-        dflidx = header + b"".join(point_data) + b"".join(window_data)
-        with open(filename, "wb") as f:
-            f.write(dflidx)
-    
+        write_index_file(filename, self.mode, self.length, self.have, self.points)
+
     @staticmethod
     def parse_dflidx(dflidx: bytes):
         header_length = 22
         point_length = 17
         mode, length, have = py_struct.unpack("<IQI", dflidx[6:header_length])
         point_end = header_length + (have * point_length)
-        
+
         loc_data = []
         window_data = []
         for i in range(have):
             i_next = i + 1
             loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
             loc_data.append(py_struct.unpack('<QQB', loc_bytes))
-            
+
             window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
             window_data.append(window_bytes)
 
@@ -114,7 +108,7 @@ cdef class WrapperDeflateIndex:
         with open(filename, "rb") as f:
             dflidx = f.read()
         mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
-        
+
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
         if _new_ptr is NULL:
@@ -138,13 +132,68 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
+def write_index_file(filename, mode, length, have, points):
+    header = b"DFLIDX" + py_struct.pack("<IQI", mode, length, have)
+    sorted_points = sorted(points, key=attrgetter("outloc"))
+    point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
+    window_data = [x.window for x in sorted_points]
+    dflidx = header + b"".join(point_data) + b"".join(window_data)
+    with open(filename, "wb") as f:
+        f.write(dflidx)
+
+
+def get_closest_point(points, value, greater_than = False):
+    """Identifies index of closest value in a numpy array to input value.
+    Args:
+        points: iteratable of point namedtuples
+        value: value that you want to find closes index for in array
+        less_than: whether to return closest index that is <= or >= value
+    Returns:
+        closest point namedtuple
+    """
+    sorted_points = sorted(points, key=attrgetter("outloc"))
+
+    closest = 0
+    for i in range(len(sorted_points)):
+        if sorted_points[i].outloc <= value and sorted_points[i].outloc > sorted_points[closest].outloc:
+            closest = i
+
+    if greater_than:
+        closest += 1
+        closest = min(closest, len(sorted_points))
+
+    return sorted_points[closest]
+
+
+def modify_points(points, starts = [], stops = [], offset = 0):
+    """Modifies a set of access Points so that they only contain the needed data
+    Args:
+        points: list of Points needed to access a file with zran
+        starts: uncompressed locations to provide indexes before
+        stops: uncompressed locations to provide indexes after
+        offset: offset to substract from current compressed locations (useful when
+                accessing into a zip file)
+    Returns:
+        list of modified points
+    """
+    if starts or stops:
+        start_points = [get_closest_point(points, x) for x in starts]
+        stop_points = [get_closest_point(points, x, greater_than=True) for x in stops]
+        points = sorted(start_points, stop_points, key=attrgetter("outloc"))
+
+    if offset != 0:
+        points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
+
+    return points
+
+
 def build_deflate_index(fileobj, off_t span = 2**20):
     if fileobj.mode != "rb":
         raise IOError("File object must be open read-binary (rb) mode.")
     infile = fdopen(fileobj.fileno(), b"rb")
 
     cdef czran.deflate_index *built
-    
+
     rtc = czran.deflate_index_build(infile, span, &built)
     check_for_error(rtc)
 
@@ -164,9 +213,9 @@ def extract_data(fileobj, str index_filename, off_t offset, int length):
 
     cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-    
+
     rtc = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
-    
+
     try:
         check_for_error(rtc)
         python_data = data[:length]
@@ -184,7 +233,7 @@ def extract_data_with_tmp_index(fileobj, off_t offset, off_t length, off_t span 
 
     cdef czran.deflate_index *built
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-    
+
     rtc1 = czran.deflate_index_build(infile, span, &built)
     try:
         check_for_error(rtc1)

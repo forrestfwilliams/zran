@@ -7,6 +7,17 @@ import pytest
 import zran
 
 
+@pytest.fixture
+def gz_points():
+    values = [
+        zran.Point(0, 1010, 0, b''),
+        zran.Point(200, 1110, 0, b''),
+        zran.Point(300, 1210, 0, b''),
+        zran.Point(400, 1310, 0, b''),
+    ]
+    return values
+
+
 def test_index():
     data = os.urandom(2**24)
     compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
@@ -28,7 +39,7 @@ def test_index():
 def test_build_deflate_index_fail():
     data = os.urandom(2**24)
     compressed = zlib.compress(data, wbits=15 + zlib.MAX_WBITS)
-    
+
     # Check missing head
     missing_head = tempfile.NamedTemporaryFile()
     with open(missing_head.name, 'wb') as f:
@@ -144,3 +155,18 @@ def test_extract_using_index_fail():
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
         with open(compressed_file_bad.name, 'rb') as f:
             zran.extract_data(f, index_file.name, start, length)
+
+
+def test_get_closest_point():
+    points = [zran.Point(0, 0, 0, b''), zran.Point(2, 0, 0, b''), zran.Point(4, 0, 0, b''), zran.Point(5, 0, 0, b'')]
+    r1 = zran.get_closest_point(points, 3)
+    assert r1.outloc == 2
+
+    r2 = zran.get_closest_point(points, 3, greater_than=True)
+    assert r2.outloc == 4
+
+
+def test_modify_points(gz_points):
+    result = zran.modify_points(gz_points, offset=1000)
+    assert result[0].outloc == 0
+    assert result[3].outloc == 400
