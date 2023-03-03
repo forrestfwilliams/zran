@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools", "wheel", "cython"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project]
+name = "zran"
+version = "0.1.0"
+requires-python = ">=3.8"
+authors = [
+    {name="Forrest Williams", email="ffwilliams2@alaska.edu"},
+]
+description = "Utility for randomly accessing DEFLATE-compressed data"
+readme = "README.md"
+classifiers=[
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: zlib/libpng License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/forrestfwilliams/zran"
+"Bug Tracker" = "https://github.com/forrestfwilliams/zran/issues"
