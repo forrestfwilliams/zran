@@ -54,7 +54,7 @@ if have_cython:
 else:
     pyx_ext = 'c'
 
-# The indexed_gzip module
+# The zran module
 zran_ext = Extension(
     'zran',
     [op.join('src', 'zran', 'zranlib.{}'.format(pyx_ext)), op.join('src', 'zran', 'zran.c')] + extra_srcs,
@@ -70,24 +70,4 @@ extensions = [zran_ext]
 if have_cython:
     extensions = cythonize(extensions, compiler_directives=compiler_directives)
 
-setup(
-    # name='zran',
-    # packages=['zran'],
-    # author='Forrest Williams',
-    # author_email='ffwilliams2@alaska.edu',
-    # description='Fast random access of zlib compressed files in Python',
-    # url='https://github.com/forrestfwilliams/zran',
-    # license='zlib',
-    #
-    # classifiers=[
-    #     'Development Status :: 3 - Alpha',
-    #     'Intended Audience :: Developers',
-    #     'License :: OSI Approved :: zlib/libpng License',
-    #     'Programming Language :: C',
-    #     'Programming Language :: Cython',
-    #     'Programming Language :: Python :: 2',
-    #     'Programming Language :: Python :: 3',
-    #     'Topic :: System :: Archiving :: Compression',
-    # ],
-    ext_modules=extensions,
-)
+setup(ext_modules=extensions)
