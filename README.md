@@ -33,10 +33,8 @@ index.to_file('index.dflidx')
 
 Then, to use the index and read data:
 ```python
-index.from_file('index.dflidx')
-
 with open('compressed.gz', 'rb') as f:
-    data = zran.extract_data(f, offset=100, length=1000)
+    data = zran.extract_data(f, 'index.dflidx', offset=100, length=1000)
 ```
 
 That's it!
