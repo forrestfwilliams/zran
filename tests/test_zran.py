@@ -108,8 +108,7 @@ def test_build_deflate_index_fail(data, compressed_gz_file_no_head, compressed_g
             zran.build_deflate_index(f)
 
 
-# TODO 'dfl' failing
-@pytest.mark.parametrize('compressed_file', ['gz', 'zlib'], indirect=True)
+@pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
 def test_index_to_file(compressed_file):
     with open(compressed_file, 'rb') as f:
         index = zran.build_deflate_index(f)
@@ -146,8 +145,7 @@ def test_extract_data_with_tmp_index(data, compressed_file):
     assert data[start : start + length] == test_data
 
 
-# TODO 'dfl' failing
-@pytest.mark.parametrize('compressed_file', ['gz', 'zlib'], indirect=True)
+@pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
 def test_extract_using_index(data, compressed_file):
     start = 100
     length = 1000

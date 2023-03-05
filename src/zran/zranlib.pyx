@@ -87,7 +87,7 @@ cdef class WrapperDeflateIndex:
     def parse_dflidx(dflidx: bytes):
         header_length = 22
         point_length = 17
-        mode, length, have = py_struct.unpack("<IQI", dflidx[6:header_length])
+        mode, length, have = py_struct.unpack("<iQI", dflidx[6:header_length])
         point_end = header_length + (have * point_length)
 
         loc_data = []
@@ -133,7 +133,7 @@ cdef class WrapperDeflateIndex:
 
 
 def write_index_file(filename, mode, length, have, points):
-    header = b"DFLIDX" + py_struct.pack("<IQI", mode, length, have)
+    header = b"DFLIDX" + py_struct.pack("<iQI", mode, length, have)
     sorted_points = sorted(points, key=attrgetter("outloc"))
     point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
     window_data = [x.window for x in sorted_points]
