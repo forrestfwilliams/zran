@@ -81,7 +81,9 @@ cdef class WrapperDeflateIndex:
         return wrapper
 
     def to_file(self, filename):
-        write_index_file(filename, self.mode, self.length, self.have, self.points)
+        dflidx = create_index_file(filename, self.mode, self.length, self.have, self.points)
+        with open(filename, "wb") as f:
+            f.write(dflidx)
 
     @staticmethod
     def parse_dflidx(dflidx: bytes):
@@ -132,14 +134,13 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def write_index_file(filename, mode, length, have, points):
+def create_index_file(filename, mode, length, have, points):
     header = b"DFLIDX" + py_struct.pack("<iQI", mode, length, have)
     sorted_points = sorted(points, key=attrgetter("outloc"))
     point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
     window_data = [x.window for x in sorted_points]
     dflidx = header + b"".join(point_data) + b"".join(window_data)
-    with open(filename, "wb") as f:
-        f.write(dflidx)
+    return dflidx
 
 
 def get_closest_point(points, value, greater_than = False):
