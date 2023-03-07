@@ -12,7 +12,9 @@ GZ_WBITS = 31
 
 
 def write_compressed_file(uncompressed_data, filename, wbits, start=None, stop=None):
-    compressed = zlib.compress(uncompressed_data, wbits=wbits)
+    compress_obj = zlib.compressobj(wbits=wbits)
+    compressed = compress_obj.compress(uncompressed_data)
+    compressed += compress_obj.flush()
 
     if not start:
         start = 0
@@ -44,7 +46,7 @@ def data():
 @pytest.fixture(scope='module')
 def compressed_gz_file_no_head(data):
     name = 'tmp_no_head.gz'
-    write_compressed_file(data, name, GZ_WBITS, start=987)
+    write_compressed_file(data, name, GZ_WBITS, start=1562)
     yield name
     os.remove(name)
 
@@ -52,7 +54,7 @@ def compressed_gz_file_no_head(data):
 @pytest.fixture(scope='module')
 def compressed_gz_file_no_tail(data):
     name = 'tmp_no_tail.gz'
-    write_compressed_file(data, name, GZ_WBITS, stop=987)
+    write_compressed_file(data, name, GZ_WBITS, stop=-1587)
     yield name
     os.remove(name)
 
