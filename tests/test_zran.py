@@ -43,48 +43,48 @@ def data():
 
 
 @pytest.fixture(scope='module')
-def compressed_gz_file_no_head(data):
+def compressed_gz_data_no_head(data):
     compressed_data = create_compressed_data(data, GZ_WBITS, start=1562)
     yield compressed_data
     del compressed_data
 
 
 @pytest.fixture(scope='module')
-def compressed_gz_file_no_tail(data):
+def compressed_gz_data_no_tail(data):
     compressed_data = create_compressed_data(data, GZ_WBITS, stop=-1587)
     yield compressed_data
     del compressed_data
 
 
 @pytest.fixture(scope='module')
-def compressed_gz_file(data):
+def compressed_gz_data(data):
     compressed_data = create_compressed_data(data, GZ_WBITS)
     yield compressed_data
     del compressed_data
 
 
 @pytest.fixture(scope='module')
-def compressed_dfl_file(data):
+def compressed_dfl_data(data):
     compressed_data = create_compressed_data(data, DFL_WBITS)
     yield compressed_data
     del compressed_data
 
 
 @pytest.fixture(scope='module')
-def compressed_zlib_file(data):
+def compressed_zlib_data(data):
     compressed_data = create_compressed_data(data, ZLIB_WBITS)
     yield compressed_data
     del compressed_data
 
 
 @pytest.fixture(scope='function')
-def compressed_file(request, compressed_gz_file, compressed_dfl_file, compressed_zlib_file):
-    filenames = {'gz': compressed_gz_file, 'dfl': compressed_dfl_file, 'zlib': compressed_zlib_file}
+def compressed_file(request, compressed_gz_data, compressed_dfl_data, compressed_zlib_data):
+    filenames = {'gz': compressed_gz_data, 'dfl': compressed_dfl_data, 'zlib': compressed_zlib_data}
     return filenames[request.param]
 
 
-def test_build_deflate_index(compressed_gz_file):
-    index = zran.build_deflate_index(compressed_gz_file)
+def test_build_deflate_index(compressed_gz_data):
+    index = zran.build_deflate_index(compressed_gz_data)
 
     points = index.points
     assert points[0].outloc == 0
@@ -93,12 +93,12 @@ def test_build_deflate_index(compressed_gz_file):
     assert len(points[0].window) == 32768
 
 
-def test_build_deflate_index_fail(data, compressed_gz_file_no_head, compressed_gz_file_no_tail):
+def test_build_deflate_index_fail(data, compressed_gz_data_no_head, compressed_gz_data_no_tail):
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
-        zran.build_deflate_index(compressed_gz_file_no_head)
+        zran.build_deflate_index(compressed_gz_data_no_head)
 
     with pytest.raises(zran.ZranError, match='zran: input file ended prematurely'):
-        zran.build_deflate_index(compressed_gz_file_no_tail)
+        zran.build_deflate_index(compressed_gz_data_no_tail)
 
 
 @pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
@@ -112,9 +112,9 @@ def test_index_to_file(compressed_file):
     assert dflidx[0:6] == b'DFLIDX'
 
 
-def test_create_index_from_file(compressed_gz_file):
+def test_create_index_from_file(compressed_gz_data):
     index_file = tempfile.NamedTemporaryFile()
-    index = zran.build_deflate_index(compressed_gz_file)
+    index = zran.build_deflate_index(compressed_gz_data)
     index.to_file(index_file.name)
     del index
 
@@ -128,15 +128,7 @@ def test_create_index_from_file(compressed_gz_file):
 
 
 @pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
-def test_extract_data_with_tmp_index(data, compressed_file):
-    start = 100
-    length = 1000
-    test_data = zran.extract_data_with_tmp_index(compressed_file, start, length)
-    assert data[start : start + length] == test_data
-
-
-@pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
-def test_extract_using_index(data, compressed_file):
+def test_decompress(data, compressed_file):
     start = 100
     length = 1000
 
@@ -145,12 +137,12 @@ def test_extract_using_index(data, compressed_file):
     index.to_file(index_file.name)
     del index
 
-    test_data = zran.extract_data(compressed_file, index_file.name, start, length)
+    test_data = zran.decompress(compressed_file, index_file.name, start, length)
     assert data[start : start + length] == test_data
 
 
-def test_extract_using_index_fail(data, compressed_gz_file, compressed_gz_file_no_head):
-    index = zran.build_deflate_index(compressed_gz_file)
+def test_decompress_fail(data, compressed_gz_data, compressed_gz_data_no_head):
+    index = zran.build_deflate_index(compressed_gz_data)
 
     index_file = tempfile.NamedTemporaryFile()
     index.to_file(index_file.name)
@@ -159,7 +151,7 @@ def test_extract_using_index_fail(data, compressed_gz_file, compressed_gz_file_n
     start = 100
     length = 1000
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
-        zran.extract_data(compressed_gz_file_no_head, index_file.name, start, length)
+        zran.decompress(compressed_gz_data_no_head, index_file.name, start, length)
 
 
 def test_get_closest_point():
