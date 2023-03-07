@@ -1,4 +1,5 @@
 from posix.types cimport off_t
+from posix.stdio cimport fmemopen
 import cython
 from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose, fdopen
@@ -7,6 +8,7 @@ from collections import namedtuple
 from operator import attrgetter
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import struct as py_struct
+from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
 
 WINDOW_LENGTH = 32768
 Point = namedtuple("Point", "outloc inloc bits window")
@@ -188,10 +190,10 @@ def modify_points(points, starts = [], stops = [], offset = 0):
     return points
 
 
-def build_deflate_index(fileobj, off_t span = 2**20):
-    if fileobj.mode != "rb":
-        raise IOError("File object must be open read-binary (rb) mode.")
-    infile = fdopen(fileobj.fileno(), b"rb")
+def build_deflate_index(bytes input_bytes, off_t span = 2**20):
+    cdef char* compressed_data = PyBytes_AsString(input_bytes)
+    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+    infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
     cdef czran.deflate_index *built
 
@@ -200,17 +202,19 @@ def build_deflate_index(fileobj, off_t span = 2**20):
 
     try:
         index = WrapperDeflateIndex.from_ptr(built, owner=True)
-    except Exception as e:
+    except ZranError as e:
         czran.deflate_index_free(built)
         raise e
+    finally:
+        fclose(infile)
 
     return index
 
 
-def extract_data(fileobj, str index_filename, off_t offset, int length):
-    if fileobj.mode != "rb":
-        raise IOError("File object must be open read-binary (rb) mode.")
-    infile = fdopen(fileobj.fileno(), b"rb")
+def extract_data(bytes input_bytes, str index_filename, off_t offset, int length):
+    cdef char* compressed_data = PyBytes_AsString(input_bytes)
+    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+    infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
     cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
@@ -222,15 +226,16 @@ def extract_data(fileobj, str index_filename, off_t offset, int length):
         python_data = data[:length]
     finally:
         # Deallocate C Objects
+        fclose(infile)
         PyMem_Free(data)
 
     return python_data
 
 
-def extract_data_with_tmp_index(fileobj, off_t offset, off_t length, off_t span = 2**20):
-    if fileobj.mode != "rb":
-        raise IOError("File object must be open read-binary (rb) mode.")
-    infile = fdopen(fileobj.fileno(), b"rb")
+def extract_data_with_tmp_index(bytes input_bytes, off_t offset, off_t length, off_t span = 2**20):
+    cdef char* compressed_data = PyBytes_AsString(input_bytes)
+    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+    infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
     cdef czran.deflate_index *built
     cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
@@ -250,6 +255,7 @@ def extract_data_with_tmp_index(fileobj, off_t offset, off_t length, off_t span 
     finally:
         # Deallocate C Objects
         czran.deflate_index_free(built)
+        fclose(infile)
         PyMem_Free(data)
 
     return python_data
