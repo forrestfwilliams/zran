@@ -128,14 +128,6 @@ def test_create_index_from_file(compressed_gz_file):
 
 
 @pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
-def test_extract_data_with_tmp_index(data, compressed_file):
-    start = 100
-    length = 1000
-    test_data = zran.extract_data_with_tmp_index(compressed_file, start, length)
-    assert data[start : start + length] == test_data
-
-
-@pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
 def test_decompress(data, compressed_file):
     start = 100
     length = 1000

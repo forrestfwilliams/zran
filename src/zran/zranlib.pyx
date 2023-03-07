@@ -230,32 +230,3 @@ def decompress(bytes input_bytes, str index_filename, off_t offset, int length):
         PyMem_Free(data)
 
     return python_data
-
-
-def extract_data_with_tmp_index(bytes input_bytes, off_t offset, off_t length, off_t span = 2**20):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
-    infile = fmemopen(compressed_data, compressed_data_length, b"r")
-
-    cdef czran.deflate_index *built
-    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-
-    rtc1 = czran.deflate_index_build(infile, span, &built)
-    try:
-        check_for_error(rtc1)
-    except ZranError as e:
-        czran.deflate_index_free(built)
-        raise e
-
-    rtc2 = czran.deflate_index_extract(infile, built, offset, data, length)
-
-    try:
-        check_for_error(rtc2)
-        python_data = data[:length]
-    finally:
-        # Deallocate C Objects
-        czran.deflate_index_free(built)
-        fclose(infile)
-        PyMem_Free(data)
-
-    return python_data
