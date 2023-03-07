@@ -136,7 +136,7 @@ def test_extract_data_with_tmp_index(data, compressed_file):
 
 
 @pytest.mark.parametrize('compressed_file', ['gz', 'dfl', 'zlib'], indirect=True)
-def test_extract_using_index(data, compressed_file):
+def test_decompress(data, compressed_file):
     start = 100
     length = 1000
 
@@ -145,11 +145,11 @@ def test_extract_using_index(data, compressed_file):
     index.to_file(index_file.name)
     del index
 
-    test_data = zran.extract_data(compressed_file, index_file.name, start, length)
+    test_data = zran.decompress(compressed_file, index_file.name, start, length)
     assert data[start : start + length] == test_data
 
 
-def test_extract_using_index_fail(data, compressed_gz_file, compressed_gz_file_no_head):
+def test_decompress_fail(data, compressed_gz_file, compressed_gz_file_no_head):
     index = zran.build_deflate_index(compressed_gz_file)
 
     index_file = tempfile.NamedTemporaryFile()
@@ -159,7 +159,7 @@ def test_extract_using_index_fail(data, compressed_gz_file, compressed_gz_file_n
     start = 100
     length = 1000
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
-        zran.extract_data(compressed_gz_file_no_head, index_file.name, start, length)
+        zran.decompress(compressed_gz_file_no_head, index_file.name, start, length)
 
 
 def test_get_closest_point():
