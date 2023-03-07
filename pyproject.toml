@@ -32,3 +32,7 @@ classifiers=[
 [project.urls]
 Homepage = "https://github.com/forrestfwilliams/zran"
 "Bug Tracker" = "https://github.com/forrestfwilliams/zran/issues"
+
+[tool.cibuildwheel]
+test-requires = "pytest"
+test-command = "pytest {package}/tests"
