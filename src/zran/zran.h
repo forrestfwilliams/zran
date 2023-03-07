@@ -4,6 +4,7 @@
  * Version 1.3  18 Feb 2023  Mark Adler */
 
 #include <stdio.h>
+#include <stddef.h>
 #include "zlib.h"
 
 // Access point.
