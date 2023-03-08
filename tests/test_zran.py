@@ -93,10 +93,12 @@ def test_build_deflate_index(compressed_gz_data):
     assert len(points[0].window) == 32768
 
 
-def test_build_deflate_index_fail(data, compressed_gz_data_no_head, compressed_gz_data_no_tail):
+def test_build_deflate_index_fail_head(data, compressed_gz_data_no_head):
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
         zran.build_deflate_index(compressed_gz_data_no_head)
 
+
+def test_build_deflate_index_fail_tail(data, compressed_gz_data_no_tail):
     with pytest.raises(zran.ZranError, match='zran: input file ended prematurely'):
         zran.build_deflate_index(compressed_gz_data_no_tail)
 
@@ -164,6 +166,6 @@ def test_get_closest_point():
 
 
 def test_modify_points(gz_points):
-    result = zran.modify_points(gz_points, offset=1000)
+    data_range, result = zran.modify_points(gz_points)
     assert result[0].outloc == 0
     assert result[3].outloc == 400

@@ -16,6 +16,7 @@ Point = namedtuple("Point", "outloc inloc bits window")
 class ZranError(Exception):
     pass
 
+
 def check_for_error(return_code):
     error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4,
                    "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
@@ -83,7 +84,7 @@ cdef class WrapperDeflateIndex:
         return wrapper
 
     def to_file(self, filename):
-        dflidx = create_index_file(filename, self.mode, self.length, self.have, self.points)
+        dflidx = create_index_file(self.mode, self.length, self.have, self.points)
         with open(filename, "wb") as f:
             f.write(dflidx)
 
@@ -168,7 +169,7 @@ def get_closest_point(points, value, greater_than = False):
     return sorted_points[closest]
 
 
-def modify_points(points, starts = [], stops = []):
+def modify_points(points, starts = [], stops = [], relative = True):
     """Modifies a set of access Points so that they only contain the needed data
     Args:
         points: list of Points needed to access a file with zran
@@ -187,7 +188,9 @@ def modify_points(points, starts = [], stops = []):
         points = sorted(start_points + stop_points, key=attrgetter("outloc"))
     
     interior_range = (points[0].inloc, points[-1].inloc)
-    offset = points[0].inloc - first_value
+    offset = 0
+    if relative:
+        offset = points[0].inloc - first_value
     points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
 
     return interior_range, points
@@ -202,14 +205,8 @@ def build_deflate_index(bytes input_bytes, off_t span = 2**20):
 
     rtc = czran.deflate_index_build(infile, span, &built)
     fclose(infile)
-
-    try:
-        check_for_error(rtc)
-        index = WrapperDeflateIndex.from_ptr(built, owner=True)
-    except ZranError as e:
-        czran.deflate_index_free(built)
-        raise e
-
+    check_for_error(rtc)
+    index = WrapperDeflateIndex.from_ptr(built, owner=True)
     return index
 
 
@@ -226,6 +223,8 @@ def decompress(bytes input_bytes, str index_filename, off_t offset, int length):
     try:
         check_for_error(rtc_extract)
         python_data = data[:length]
+    except ZranError as e:
+        raise e
     finally:
         # Deallocate C Objects
         fclose(infile)
