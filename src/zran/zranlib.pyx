@@ -136,7 +136,7 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def create_index_file(filename, mode, length, have, points):
+def create_index_file(mode, length, have, points):
     header = b"DFLIDX" + py_struct.pack("<iQI", mode, length, have)
     sorted_points = sorted(points, key=attrgetter("outloc"))
     point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
@@ -163,12 +163,12 @@ def get_closest_point(points, value, greater_than = False):
 
     if greater_than:
         closest += 1
-        closest = min(closest, len(sorted_points))
+        closest = min(closest, len(sorted_points)-1)
 
     return sorted_points[closest]
 
 
-def modify_points(points, starts = [], stops = [], offset = 0):
+def modify_points(points, starts = [], stops = []):
     """Modifies a set of access Points so that they only contain the needed data
     Args:
         points: list of Points needed to access a file with zran
@@ -179,15 +179,18 @@ def modify_points(points, starts = [], stops = [], offset = 0):
     Returns:
         list of modified points
     """
+    points = sorted(points, key=attrgetter("outloc"))
+    first_value = points[0].inloc
     if starts or stops:
         start_points = [get_closest_point(points, x) for x in starts]
         stop_points = [get_closest_point(points, x, greater_than=True) for x in stops]
-        points = sorted(start_points, stop_points, key=attrgetter("outloc"))
+        points = sorted(start_points + stop_points, key=attrgetter("outloc"))
+    
+    interior_range = (points[0].inloc, points[-1].inloc)
+    offset = points[0].inloc - first_value
+    points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
 
-    if offset != 0:
-        points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
-
-    return points
+    return interior_range, points
 
 
 def build_deflate_index(bytes input_bytes, off_t span = 2**20):
@@ -198,15 +201,14 @@ def build_deflate_index(bytes input_bytes, off_t span = 2**20):
     cdef czran.deflate_index *built
 
     rtc = czran.deflate_index_build(infile, span, &built)
-    check_for_error(rtc)
+    fclose(infile)
 
     try:
+        check_for_error(rtc)
         index = WrapperDeflateIndex.from_ptr(built, owner=True)
     except ZranError as e:
         czran.deflate_index_free(built)
         raise e
-    finally:
-        fclose(infile)
 
     return index
 
