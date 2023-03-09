@@ -188,12 +188,6 @@ def modify_points(points, compressed_length, uncompressed_length, starts = [], s
         desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
     else:
         desired_points = points
-
-    # inlocs = [x.inloc for x in points]
-    # desired_inlocs = [x.inloc for x in desired_points]
-    # min_index = inlocs.index(min(desired_inlocs))
-    # if min_index != 0:
-    #     desired_points.insert(0, points[min_index - 1])
     
     if desired_points[-1].inloc == max([x.inloc for x in points]):
         inloc_range = (desired_points[0].inloc, compressed_length)
