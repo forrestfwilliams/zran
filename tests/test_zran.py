@@ -149,25 +149,16 @@ def test_get_closest_point():
     assert r2.outloc == 4
 
 
-@pytest.mark.skip
 @pytest.mark.parametrize('start_index,stop_index', ((0, 5), (4, 10), (9, -1)))
 def test_modify_index_and_decompress(start_index, stop_index, data, compressed_dfl_data):
-    index = zran.build_deflate_index(compressed_dfl_data, span=2**18)
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     start = index.points[start_index].outloc + 100
     stop = index.points[stop_index].outloc + 100
 
-    inloc_range, outloc_range, desired_points = zran.modify_points(
-        index.points, len(compressed_dfl_data), index.length, [start], [stop]
-    )
-    new_length = desired_points[-1].outloc - desired_points[0].outloc
-    dflidx = zran.create_index_file(index.mode, new_length, len(desired_points), desired_points)
-
-    index_file = tempfile.NamedTemporaryFile()
-    with open(index_file.name, "wb") as f:
-        f.write(dflidx)
-    del index
-
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
     test_data = zran.decompress(
-        compressed_dfl_data[inloc_range[0] : inloc_range[1]], index_file.name, start - outloc_range[0], stop - start
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+        new_index,
+        start - uncompressed_range[0], stop - start
     )
     assert data[start:stop] == test_data

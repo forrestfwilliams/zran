@@ -162,7 +162,7 @@ class Index:
 
     @staticmethod
     def create_index(input_bytes: bytes, span: int = 2**20):
-        c_index = build_deflate_index(input_bytes, span = 2**20)
+        c_index = build_deflate_index(input_bytes, span = span)
         new_index = Index(c_index.mode, len(input_bytes), c_index.length, c_index.have, c_index.points)
         del c_index
         return new_index
@@ -209,15 +209,59 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
+    def create_modified_index(self, starts = [], stops = [], relative = True):
+        """Modifies a set of access Points so that they only contain the needed data
+        Args:
+            starts: uncompressed locations to provide indexes before.
+            stops: uncompressed locations to provide indexes after.
+            relative: whether or not the compressed offsets (inloc) should be relative
+                to the modified index (begin at zero). Set to False if creating an index
+                for part of a zip file.
+        Returns:
+            range of compressed data, range of uncompressed data, a modified Index.
+        """
+        compressed_offsets = [x.inloc for x in self.points]
+        uncompressed_offsets = [x.outloc for x in self.points]
+        if not (starts or stops):
+            raise ValueError("Either starts or stops must be specified")
+
+        start_points = list({get_closest_point(self.points, x) for x in starts})
+        stop_points = list({get_closest_point(self.points, x, greater_than=True) for x in stops})
+        desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
+        
+        compressed_index = compressed_offsets.index(desired_points[-1].inloc)
+        if compressed_index == len(compressed_offsets) - 1:
+            compressed_range = (desired_points[0].inloc, self.compressed_size)
+        else:
+            compressed_range = (desired_points[0].inloc, self.points[compressed_index+1].inloc - 1)
+
+        uncompressed_index = uncompressed_offsets.index(desired_points[-1].outloc)
+        if uncompressed_index == len(uncompressed_offsets) - 1:
+            uncompressed_range = (desired_points[0].outloc, self.uncompressed_size)
+        else:
+            uncompressed_range = (desired_points[0].outloc, self.points[uncompressed_index+1].outloc - 1)
+
+        inloc_offset = desired_points[0].inloc - compressed_offsets[0] if relative else 0
+        outloc_offset = min([x.outloc for x in desired_points])
+        desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
+        
+        modified_index = Index(self.have,
+                            compressed_range[1] - compressed_range[0],
+                            uncompressed_range[1] - uncompressed_range[0],
+                            len(desired_points),
+                            desired_points
+                            )
+        return compressed_range, uncompressed_range, modified_index
+
 
 def get_closest_point(points, value, greater_than = False):
     """Identifies index of closest value in a numpy array to input value.
     Args:
         points: iteratable of point namedtuples
-        value: value that you want to find closes index for in array
-        less_than: whether to return closest index that is <= or >= value
+        value: value that you want to find closest index for in array
+        greater_than: whether to return closest Point that is <= or > value
     Returns:
-        closest point namedtuple
+        closest Point
     """
     sorted_points = sorted(points, key=attrgetter("outloc"))
 
@@ -231,41 +275,3 @@ def get_closest_point(points, value, greater_than = False):
         closest = min(closest, len(sorted_points)-1)
 
     return sorted_points[closest]
-
-
-def modify_points(points, compressed_length, uncompressed_length, starts = [], stops = [], relative = True):
-    """Modifies a set of access Points so that they only contain the needed data
-    Args:
-        points: list of Points needed to access a file with zran
-        starts: uncompressed locations to provide indexes before
-        stops: uncompressed locations to provide indexes after
-    Returns:
-        list of modified points
-    """
-    points = sorted(points, key=attrgetter("outloc"))
-    first_value = points[0].inloc
-    if starts or stops:
-        start_points = list({get_closest_point(points, x) for x in starts})
-        stop_points = list({get_closest_point(points, x, greater_than=True) for x in stops})
-        desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
-    else:
-        desired_points = points
-
-    if desired_points[-1].inloc == max([x.inloc for x in points]):
-        inloc_range = (desired_points[0].inloc, compressed_length)
-    else:
-        inloc_range = (desired_points[0].inloc, desired_points[-1].inloc)
-
-    if desired_points[-1].outloc == max([x.outloc for x in points]):
-        outloc_range = (desired_points[0].outloc, uncompressed_length)
-    else:
-        outloc_range = (desired_points[0].outloc, desired_points[-1].outloc)
-
-    inloc_offset = 0
-    outloc_offset = 0
-    if relative:
-        inloc_offset = desired_points[0].inloc - first_value
-        outloc_offset = min([x.outloc for x in desired_points])
-    desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
-
-    return inloc_range, outloc_range, desired_points
