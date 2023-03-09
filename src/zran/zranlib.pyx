@@ -30,8 +30,10 @@ def check_for_error(return_code):
             raise ZranError("zran: compressed data error in input file")
         elif return_code == error_codes["Z_ERRNO"]:
             raise ZranError("zran: read error on input file")
+        elif return_code == error_codes["Z_STREAM_ERROR"]:
+            raise ZranError(f"zran: failed with Z_STREAM_ERROR")
         else:
-            raise ZranError("zran: failed with error code %d".format(return_code))
+            raise ZranError(f"zran: failed with error code {return_code}")
 
 
 cdef class WrapperDeflateIndex:
@@ -169,31 +171,48 @@ def get_closest_point(points, value, greater_than = False):
     return sorted_points[closest]
 
 
-def modify_points(points, starts = [], stops = [], relative = True):
+def modify_points(points, compressed_length, uncompressed_length, starts = [], stops = [], relative = True):
     """Modifies a set of access Points so that they only contain the needed data
     Args:
         points: list of Points needed to access a file with zran
         starts: uncompressed locations to provide indexes before
         stops: uncompressed locations to provide indexes after
-        offset: offset to substract from current compressed locations (useful when
-                accessing into a zip file)
     Returns:
         list of modified points
     """
     points = sorted(points, key=attrgetter("outloc"))
     first_value = points[0].inloc
     if starts or stops:
-        start_points = [get_closest_point(points, x) for x in starts]
-        stop_points = [get_closest_point(points, x, greater_than=True) for x in stops]
-        points = sorted(start_points + stop_points, key=attrgetter("outloc"))
-    
-    interior_range = (points[0].inloc, points[-1].inloc)
-    offset = 0
-    if relative:
-        offset = points[0].inloc - first_value
-    points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
+        start_points = list({get_closest_point(points, x) for x in starts})
+        stop_points = list({get_closest_point(points, x, greater_than=True) for x in stops})
+        desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
+    else:
+        desired_points = points
 
-    return interior_range, points
+    # inlocs = [x.inloc for x in points]
+    # desired_inlocs = [x.inloc for x in desired_points]
+    # min_index = inlocs.index(min(desired_inlocs))
+    # if min_index != 0:
+    #     desired_points.insert(0, points[min_index - 1])
+    
+    if desired_points[-1].inloc == max([x.inloc for x in points]):
+        inloc_range = (desired_points[0].inloc, compressed_length)
+    else:
+        inloc_range = (desired_points[0].inloc, desired_points[-1].inloc)
+
+    if desired_points[-1].outloc == max([x.outloc for x in points]):
+        outloc_range = (desired_points[0].outloc, uncompressed_length)
+    else:
+        outloc_range = (desired_points[0].outloc, desired_points[-1].outloc)
+
+    inloc_offset = 0
+    outloc_offset = 0
+    if relative:
+        inloc_offset = desired_points[0].inloc - first_value
+        outloc_offset = min([x.outloc for x in desired_points])
+    desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
+
+    return inloc_range, outloc_range, desired_points
 
 
 def build_deflate_index(bytes input_bytes, off_t span = 2**20):
