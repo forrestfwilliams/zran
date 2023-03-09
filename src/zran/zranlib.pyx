@@ -5,6 +5,7 @@ from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose, fdopen
 cimport czran
 from collections import namedtuple
+from typing import Iterable
 from operator import attrgetter
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import struct as py_struct
@@ -13,6 +14,7 @@ from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
 WINDOW_LENGTH = 32768
 Point = namedtuple("Point", "outloc inloc bits window")
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 class ZranError(Exception):
     pass
 
@@ -85,37 +87,8 @@ cdef class WrapperDeflateIndex:
         wrapper.ptr_owner = owner
         return wrapper
 
-    def to_file(self, filename):
-        dflidx = create_index_file(self.mode, self.length, self.have, self.points)
-        with open(filename, "wb") as f:
-            f.write(dflidx)
-
     @staticmethod
-    def parse_dflidx(dflidx: bytes):
-        header_length = 22
-        point_length = 17
-        mode, length, have = py_struct.unpack("<iQI", dflidx[6:header_length])
-        point_end = header_length + (have * point_length)
-
-        loc_data = []
-        window_data = []
-        for i in range(have):
-            i_next = i + 1
-            loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
-            loc_data.append(py_struct.unpack('<QQB', loc_bytes))
-
-            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
-            window_data.append(window_bytes)
-
-        points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
-        return mode, length, have, points
-
-    @staticmethod
-    def from_file(filename):
-        with open(filename, "rb") as f:
-            dflidx = f.read()
-        mode, length, have, points = WrapperDeflateIndex.parse_dflidx(dflidx)
-
+    def from_python_index(mode, length, have, points):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
         if _new_ptr is NULL:
@@ -139,13 +112,102 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def create_index_file(mode, length, have, points):
-    header = b"DFLIDX" + py_struct.pack("<iQI", mode, length, have)
-    sorted_points = sorted(points, key=attrgetter("outloc"))
-    point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
-    window_data = [x.window for x in sorted_points]
-    dflidx = header + b"".join(point_data) + b"".join(window_data)
-    return dflidx
+def build_deflate_index(bytes input_bytes, off_t span = 2**20):
+    cdef char* compressed_data = PyBytes_AsString(input_bytes)
+    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+    infile = fmemopen(compressed_data, compressed_data_length, b"r")
+
+    cdef czran.deflate_index *built
+
+    rtc = czran.deflate_index_build(infile, span, &built)
+    fclose(infile)
+    check_for_error(rtc)
+    index = WrapperDeflateIndex.from_ptr(built, owner=True)
+    return index
+
+
+def decompress(bytes input_bytes, index, off_t offset, int length):
+    cdef char* compressed_data = PyBytes_AsString(input_bytes)
+    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+    infile = fmemopen(compressed_data, compressed_data_length, b"r")
+
+    cdef WrapperDeflateIndex rebuilt_index = index.to_c_index()
+    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
+
+    rtc_extract = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+
+    try:
+        check_for_error(rtc_extract)
+        python_data = data[:length]
+    except ZranError as e:
+        raise e
+    finally:
+        # Deallocate C Objects
+        fclose(infile)
+        PyMem_Free(data)
+
+    return python_data
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Python Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+
+class Index:
+    def __init__(self, mode: int, compressed_size: int, uncompressed_size: int, have: int, points: Iterable[Point]):
+        self.compressed_size = compressed_size
+        self.uncompressed_size = uncompressed_size
+        self.mode = mode
+        self.have = have
+        self.points = points
+
+    @staticmethod
+    def create_index(input_bytes: bytes, span: int = 2**20):
+        c_index = build_deflate_index(input_bytes, span = 2**20)
+        new_index = Index(c_index.mode, len(input_bytes), c_index.length, c_index.have, c_index.points)
+        del c_index
+        return new_index
+
+    def create_index_file(self):
+        header = b"DFLIDX" + py_struct.pack("<iQQI", self.mode, self.compressed_size, self.uncompressed_size, self.have)
+        sorted_points = sorted(self.points, key=attrgetter("outloc"))
+        point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
+        window_data = [x.window for x in sorted_points]
+        dflidx = header + b"".join(point_data) + b"".join(window_data)
+        return dflidx
+
+    def write_file(self, filename: str):
+        with open(filename, "wb") as f:
+            f.write(self.create_index_file())
+
+    @staticmethod
+    def parse_index_file(dflidx: bytes):
+        header_length = 30
+        point_length = 17
+        mode, compressed_size, uncompressed_size, have = py_struct.unpack("<iQQI", dflidx[6:header_length])
+        point_end = header_length + (have * point_length)
+
+        loc_data = []
+        window_data = []
+        for i in range(have):
+            i_next = i + 1
+            loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
+            loc_data.append(py_struct.unpack('<QQB', loc_bytes))
+
+            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
+            window_data.append(window_bytes)
+
+        points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
+        points = sorted(points, key=attrgetter("outloc"))
+        return Index(mode, compressed_size, uncompressed_size, have, points)
+
+    @staticmethod
+    def read_file(filename: str):
+        with open(filename, "rb") as f:
+            new_index = Index.parse_index_file(f.read())
+        return new_index
+
+    def to_c_index(self):
+        return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
 
 def get_closest_point(points, value, greater_than = False):
@@ -188,7 +250,7 @@ def modify_points(points, compressed_length, uncompressed_length, starts = [], s
         desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
     else:
         desired_points = points
-    
+
     if desired_points[-1].inloc == max([x.inloc for x in points]):
         inloc_range = (desired_points[0].inloc, compressed_length)
     else:
@@ -207,40 +269,3 @@ def modify_points(points, compressed_length, uncompressed_length, starts = [], s
     desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
 
     return inloc_range, outloc_range, desired_points
-
-
-def build_deflate_index(bytes input_bytes, off_t span = 2**20):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
-    infile = fmemopen(compressed_data, compressed_data_length, b"r")
-
-    cdef czran.deflate_index *built
-
-    rtc = czran.deflate_index_build(infile, span, &built)
-    fclose(infile)
-    check_for_error(rtc)
-    index = WrapperDeflateIndex.from_ptr(built, owner=True)
-    return index
-
-
-def decompress(bytes input_bytes, str index_filename, off_t offset, int length):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
-    infile = fmemopen(compressed_data, compressed_data_length, b"r")
-
-    cdef WrapperDeflateIndex rebuilt_index = WrapperDeflateIndex.from_file(index_filename)
-    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-
-    rtc_extract = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
-
-    try:
-        check_for_error(rtc_extract)
-        python_data = data[:length]
-    except ZranError as e:
-        raise e
-    finally:
-        # Deallocate C Objects
-        fclose(infile)
-        PyMem_Free(data)
-
-    return python_data
