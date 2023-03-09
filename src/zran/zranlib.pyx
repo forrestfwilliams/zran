@@ -16,6 +16,7 @@ Point = namedtuple("Point", "outloc inloc bits window")
 class ZranError(Exception):
     pass
 
+
 def check_for_error(return_code):
     error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4,
                    "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
@@ -29,8 +30,10 @@ def check_for_error(return_code):
             raise ZranError("zran: compressed data error in input file")
         elif return_code == error_codes["Z_ERRNO"]:
             raise ZranError("zran: read error on input file")
+        elif return_code == error_codes["Z_STREAM_ERROR"]:
+            raise ZranError(f"zran: failed with Z_STREAM_ERROR")
         else:
-            raise ZranError("zran: failed with error code %d".format(return_code))
+            raise ZranError(f"zran: failed with error code {return_code}")
 
 
 cdef class WrapperDeflateIndex:
@@ -83,7 +86,7 @@ cdef class WrapperDeflateIndex:
         return wrapper
 
     def to_file(self, filename):
-        dflidx = create_index_file(filename, self.mode, self.length, self.have, self.points)
+        dflidx = create_index_file(self.mode, self.length, self.have, self.points)
         with open(filename, "wb") as f:
             f.write(dflidx)
 
@@ -136,7 +139,7 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def create_index_file(filename, mode, length, have, points):
+def create_index_file(mode, length, have, points):
     header = b"DFLIDX" + py_struct.pack("<iQI", mode, length, have)
     sorted_points = sorted(points, key=attrgetter("outloc"))
     point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
@@ -163,31 +166,47 @@ def get_closest_point(points, value, greater_than = False):
 
     if greater_than:
         closest += 1
-        closest = min(closest, len(sorted_points))
+        closest = min(closest, len(sorted_points)-1)
 
     return sorted_points[closest]
 
 
-def modify_points(points, starts = [], stops = [], offset = 0):
+def modify_points(points, compressed_length, uncompressed_length, starts = [], stops = [], relative = True):
     """Modifies a set of access Points so that they only contain the needed data
     Args:
         points: list of Points needed to access a file with zran
         starts: uncompressed locations to provide indexes before
         stops: uncompressed locations to provide indexes after
-        offset: offset to substract from current compressed locations (useful when
-                accessing into a zip file)
     Returns:
         list of modified points
     """
+    points = sorted(points, key=attrgetter("outloc"))
+    first_value = points[0].inloc
     if starts or stops:
-        start_points = [get_closest_point(points, x) for x in starts]
-        stop_points = [get_closest_point(points, x, greater_than=True) for x in stops]
-        points = sorted(start_points, stop_points, key=attrgetter("outloc"))
+        start_points = list({get_closest_point(points, x) for x in starts})
+        stop_points = list({get_closest_point(points, x, greater_than=True) for x in stops})
+        desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
+    else:
+        desired_points = points
+    
+    if desired_points[-1].inloc == max([x.inloc for x in points]):
+        inloc_range = (desired_points[0].inloc, compressed_length)
+    else:
+        inloc_range = (desired_points[0].inloc, desired_points[-1].inloc)
 
-    if offset != 0:
-        points = [Point(x.outloc, x.inloc - offset, x.bits, x.window) for x in points]
+    if desired_points[-1].outloc == max([x.outloc for x in points]):
+        outloc_range = (desired_points[0].outloc, uncompressed_length)
+    else:
+        outloc_range = (desired_points[0].outloc, desired_points[-1].outloc)
 
-    return points
+    inloc_offset = 0
+    outloc_offset = 0
+    if relative:
+        inloc_offset = desired_points[0].inloc - first_value
+        outloc_offset = min([x.outloc for x in desired_points])
+    desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
+
+    return inloc_range, outloc_range, desired_points
 
 
 def build_deflate_index(bytes input_bytes, off_t span = 2**20):
@@ -198,16 +217,9 @@ def build_deflate_index(bytes input_bytes, off_t span = 2**20):
     cdef czran.deflate_index *built
 
     rtc = czran.deflate_index_build(infile, span, &built)
+    fclose(infile)
     check_for_error(rtc)
-
-    try:
-        index = WrapperDeflateIndex.from_ptr(built, owner=True)
-    except ZranError as e:
-        czran.deflate_index_free(built)
-        raise e
-    finally:
-        fclose(infile)
-
+    index = WrapperDeflateIndex.from_ptr(built, owner=True)
     return index
 
 
@@ -224,6 +236,8 @@ def decompress(bytes input_bytes, str index_filename, off_t offset, int length):
     try:
         check_for_error(rtc_extract)
         python_data = data[:length]
+    except ZranError as e:
+        raise e
     finally:
         # Deallocate C Objects
         fclose(infile)
