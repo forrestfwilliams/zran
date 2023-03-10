@@ -159,6 +159,37 @@ def test_modify_index_and_decompress(start_index, stop_index, data, compressed_d
     test_data = zran.decompress(
         compressed_dfl_data[compressed_range[0] : compressed_range[1]],
         new_index,
-        start - uncompressed_range[0], stop - start
+        start - uncompressed_range[0],
+        stop - start,
     )
     assert data[start:stop] == test_data
+
+
+from collections import namedtuple
+Offset = namedtuple('Offset', ['start', 'stop'])
+offset_list = [Offset(start=109395, stop=149033895), Offset(start=149033895, stop=297958395)]
+
+
+@pytest.fixture(scope='module')
+def swath():
+    slc_name = 'tests/S1A_IW_SLC__1SDV_20200604T022251_20200604T022318_032861_03CE65_7C85.zip'
+    with open(slc_name, 'rb') as f:
+        f.seek(35813)
+        body = f.read(862111605 - 35813)
+    yield body
+    del body
+
+
+@pytest.mark.parametrize('burst', offset_list)
+def test_safe(burst, swath):
+
+    index = zran.Index.create_index(swath)
+
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([burst.start], [burst.stop])
+    test_data = zran.decompress(
+        swath[compressed_range[0] : compressed_range[1]],
+        new_index,
+        burst.start - uncompressed_range[0],
+        burst.stop - burst.start,
+    )
+    assert True
