@@ -209,7 +209,7 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts = [], stops = [], relative = True):
+    def create_modified_index(self, starts = [], stops = []):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
             starts: uncompressed locations to provide indexes before.
@@ -225,24 +225,26 @@ class Index:
         if not (starts or stops):
             raise ValueError("Either starts or stops must be specified")
 
-        start_points = list({get_closest_point(self.points, x) for x in starts})
-        stop_points = list({get_closest_point(self.points, x, greater_than=True) for x in stops})
-        desired_points = sorted(start_points + stop_points, key=attrgetter("outloc"))
-        
-        compressed_index = compressed_offsets.index(desired_points[-1].inloc)
-        if compressed_index == len(compressed_offsets) - 1:
-            compressed_range = (desired_points[0].inloc, self.compressed_size)
-        else:
-            compressed_range = (desired_points[0].inloc, self.points[compressed_index+1].inloc - 1)
+        start_points = [get_closest_point(self.points, x) for x in starts]
+        stop_points = [get_closest_point(self.points, x, greater_than=True) for x in stops]
+        desired_points = sorted(list(set(start_points + stop_points)), key=attrgetter("outloc"))
 
-        uncompressed_index = uncompressed_offsets.index(desired_points[-1].outloc)
-        if uncompressed_index == len(uncompressed_offsets) - 1:
+        start_index = compressed_offsets.index(desired_points[0].inloc)
+        if start_index != 0:
+            # TODO do not need to execute this line if desired_points[0].bits == 0.
+            # Can you modify the data to make this true?
+            desired_points.insert(0, self.points[start_index-1])
+
+        stop_index = compressed_offsets.index(desired_points[-1].inloc)
+        if stop_index == len(compressed_offsets) - 1:
+            compressed_range = (desired_points[0].inloc, self.compressed_size)
             uncompressed_range = (desired_points[0].outloc, self.uncompressed_size)
         else:
-            uncompressed_range = (desired_points[0].outloc, self.points[uncompressed_index+1].outloc - 1)
+            compressed_range = (desired_points[0].inloc, self.points[stop_index].inloc - 1)
+            uncompressed_range = (desired_points[0].outloc, self.points[stop_index].outloc - 1)
 
-        inloc_offset = desired_points[0].inloc - compressed_offsets[0] if relative else 0
-        outloc_offset = min([x.outloc for x in desired_points])
+        inloc_offset = desired_points[0].inloc - compressed_offsets[0]
+        outloc_offset = desired_points[0].outloc
         desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
         
         modified_index = Index(self.have,
