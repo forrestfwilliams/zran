@@ -10,8 +10,10 @@ from operator import attrgetter
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import struct as py_struct
 from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
+import zlib
 
 WINDOW_LENGTH = 32768
+GZ_WBITS = 31
 Point = namedtuple("Point", "outloc inloc bits window")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -173,14 +175,21 @@ class Index:
         point_data = [py_struct.pack("<QQB", x.outloc, x.inloc, x.bits) for x in sorted_points]
         window_data = [x.window for x in sorted_points]
         dflidx = header + b"".join(point_data) + b"".join(window_data)
-        return dflidx
+
+        compress_obj = zlib.compressobj(wbits=GZ_WBITS)
+        compressed_dflidx = compress_obj.compress(dflidx)
+        compressed_dflidx += compress_obj.flush()
+        return compressed_dflidx
 
     def write_file(self, filename: str):
         with open(filename, "wb") as f:
             f.write(self.create_index_file())
 
     @staticmethod
-    def parse_index_file(dflidx: bytes):
+    def parse_index_file(compressed_dflidx: bytes):
+        decompress_obj = zlib.decompressobj(GZ_WBITS)
+        dflidx = decompress_obj.decompress(compressed_dflidx)
+
         header_length = 30
         point_length = 17
         mode, compressed_size, uncompressed_size, have = py_struct.unpack("<iQQI", dflidx[6:header_length])
