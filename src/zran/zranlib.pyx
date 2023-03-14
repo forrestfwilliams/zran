@@ -114,12 +114,12 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def build_deflate_index(bytes input_bytes, off_t span = 2**20):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDeflateIndex:
+    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
+    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
-    cdef czran.deflate_index *built
+    built = cython.declare(cython.pointer(czran.deflate_index))
 
     rtc = czran.deflate_index_build(infile, span, &built)
     fclose(infile)
@@ -128,14 +128,14 @@ def build_deflate_index(bytes input_bytes, off_t span = 2**20):
     return index
 
 
-def decompress(bytes input_bytes, index, off_t offset, int length):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:
+    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
+    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
-    cdef WrapperDeflateIndex rebuilt_index = index.to_c_index()
-    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-
+    rebuilt_index = cython.declare(WrapperDeflateIndex, index.to_c_index())
+    uncompressed_data_length = (length + 1) * cython.sizeof(cython.uchar)
+    data = cython.declare(cython.p_uchar, cython.cast(cython.p_uchar, PyMem_Malloc(uncompressed_data_length)))
     rtc_extract = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
 
     try:
