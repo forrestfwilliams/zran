@@ -1,23 +1,18 @@
-from posix.stdio cimport fmemopen
-from posix.types cimport off_t
-
-import cython
-
-cimport czran
-from libc.stdio cimport FILE, fclose, fdopen, fopen
-from libc.stdlib cimport free, malloc
-
+# vim: filetype=python
+import struct as py_struct
+import zlib
 from collections import namedtuple
 from operator import attrgetter
 from typing import Iterable, List
 
-from cpython.mem cimport PyMem_Free, PyMem_Malloc
-
-import struct as py_struct
-
-from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
-
-import zlib
+import cython
+from cython.cimports import czran
+from cython.cimports.cpython.bytes import PyBytes_AsString, PyBytes_Size
+from cython.cimports.cpython.mem import PyMem_Free, PyMem_Malloc
+from cython.cimports.libc.stdio import fclose
+from cython.cimports.libc.stdlib import free, malloc
+from cython.cimports.posix.stdio import fmemopen
+from cython.cimports.posix.types import off_t
 
 WINDOW_LENGTH = 32768
 GZ_WBITS = 31
@@ -29,8 +24,7 @@ class ZranError(Exception):
 
 
 def check_for_error(return_code):
-    error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4,
-                   "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
+    error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4, "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
 
     if return_code < 0:
         if return_code == error_codes["Z_MEM_ERROR"]:
@@ -42,7 +36,7 @@ def check_for_error(return_code):
         elif return_code == error_codes["Z_ERRNO"]:
             raise ZranError("zran: read error on input file")
         elif return_code == error_codes["Z_STREAM_ERROR"]:
-            raise ZranError(f"zran: failed with Z_STREAM_ERROR")
+            raise ZranError("zran: failed with Z_STREAM_ERROR")
         else:
             raise ZranError(f"zran: failed with error code {return_code}")
 
@@ -77,7 +71,7 @@ class WrapperDeflateIndex:
 
     @property
     def points(self):
-        if self._ptr is not NULL:
+        if self._ptr is not cython.NULL:
             result = []
             for i in range(self.have):
                 point = Point(self._ptr.list[i].outloc,
@@ -118,7 +112,7 @@ class WrapperDeflateIndex:
         list_size = have * cython.sizeof(czran.point_t)
         _new_ptr.list = cython.cast(cython.pointer(czran.point_t), malloc(list_size))
 
-        if _new_ptr.list is NULL:
+        if _new_ptr.list is cython.NULL:
             raise MemoryError
 
         for i in range(have):
@@ -137,7 +131,7 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
     built = cython.declare(cython.pointer(czran.deflate_index))
 
-    rtc = czran.deflate_index_build(infile, span, &built)
+    rtc = czran.deflate_index_build(infile, span, cython.address(built))
     fclose(infile)
     check_for_error(rtc)
     index = WrapperDeflateIndex.from_ptr(built, owner=True)
@@ -214,7 +208,6 @@ class Index:
         loc_data = []
         window_data = []
         for i in range(have):
-            i_next = i + 1
             loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
             loc_data.append(py_struct.unpack('<QQB', loc_bytes))
 
@@ -246,7 +239,6 @@ class Index:
             range of compressed data, range of uncompressed data, a modified Index.
         """
         compressed_offsets = [x.inloc for x in self.points]
-        uncompressed_offsets = [x.outloc for x in self.points]
         if not (starts or stops):
             raise ValueError("Either starts or stops must be specified")
 
