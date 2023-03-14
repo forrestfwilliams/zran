@@ -10,7 +10,7 @@ from cython.cimports import czran
 from cython.cimports.cpython.bytes import PyBytes_AsString, PyBytes_Size
 from cython.cimports.cpython.mem import PyMem_Free, PyMem_Malloc
 from cython.cimports.libc.stdio import fclose
-from cython.cimports.libc.stdlib import free, malloc
+from cython.cimports.libc.stdlib import malloc
 from cython.cimports.posix.stdio import fmemopen
 from cython.cimports.posix.types import off_t
 
@@ -86,7 +86,7 @@ class WrapperDeflateIndex:
 
     @staticmethod
     @cython.cfunc
-    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint=False) -> WrapperDeflateIndex:
+    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint=False) -> WrapperDeflateIndex: # noqa
         wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
@@ -138,7 +138,7 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
     return index
 
 
-def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:
+def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes: # noqa
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
