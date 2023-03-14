@@ -92,6 +92,7 @@ class WrapperDeflateIndex:
         return wrapper
 
     @staticmethod
+    @cython.cfunc
     def from_python_index(mode: int, length: int, have: int, points: List[Point]):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr = cython.declare(
@@ -107,12 +108,9 @@ class WrapperDeflateIndex:
         _new_ptr.length = length
 
         # Can't use PyMem_Malloc here because free operation is controlled by C library
-        _new_ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
-        # _new_ptr.list = cython.declare(cython.pointer(czran.point_t),
-        #                                 cython.cast(cython.pointer(czran.point_t),
-        #                                             malloc(cython.sizeof(have * cython.sizeof(czran.point_t)))
-        #                                             )
-        #                                )
+        list_size = have * cython.sizeof(czran.point_t)
+        _new_ptr.list = cython.cast(cython.pointer(czran.point_t), malloc(list_size))
+
         if _new_ptr.list is NULL:
             raise MemoryError
 
