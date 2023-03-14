@@ -1,15 +1,22 @@
-from posix.types cimport off_t
 from posix.stdio cimport fmemopen
+from posix.types cimport off_t
+
 import cython
-from libc.stdlib  cimport free, malloc
-from libc.stdio cimport FILE, fopen, fclose, fdopen
+
 cimport czran
+from libc.stdio cimport FILE, fclose, fdopen, fopen
+from libc.stdlib cimport free, malloc
+
 from collections import namedtuple
-from typing import Iterable, List
 from operator import attrgetter
-from cpython.mem cimport PyMem_Malloc, PyMem_Free
+from typing import Iterable, List
+
+from cpython.mem cimport PyMem_Free, PyMem_Malloc
+
 import struct as py_struct
+
 from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
+
 import zlib
 
 WINDOW_LENGTH = 32768
@@ -264,7 +271,7 @@ class Index:
         inloc_offset = desired_points[0].inloc - compressed_offsets[0]
         outloc_offset = desired_points[0].outloc
         desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
-        
+
         modified_index = Index(self.have,
                             compressed_range[1] - compressed_range[0],
                             uncompressed_range[1] - uncompressed_range[0],
