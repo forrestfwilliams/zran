@@ -18,13 +18,21 @@ WINDOW_LENGTH = 32768
 GZ_WBITS = 31
 Point = namedtuple("Point", "outloc inloc bits window")
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 class ZranError(Exception):
     pass
 
 
 def check_for_error(return_code):
-    error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4, "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
+    error_codes = {
+        "Z_ERRNO": -1,
+        "Z_STREAM_ERROR": -2,
+        "Z_DATA_ERROR": -3,
+        "Z_MEM_ERROR": -4,
+        "Z_BUF_ERROR": -5,
+        "Z_VERSION_ERROR": -6,
+    }
 
     if return_code < 0:
         if return_code == error_codes["Z_MEM_ERROR"]:
@@ -74,11 +82,12 @@ class WrapperDeflateIndex:
         if self._ptr is not cython.NULL:
             result = []
             for i in range(self.have):
-                point = Point(self._ptr.list[i].outloc,
-                              self._ptr.list[i].inloc,
-                              self._ptr.list[i].bits,
-                              self._ptr.list[i].window[:WINDOW_LENGTH]
-                              )
+                point = Point(
+                    self._ptr.list[i].outloc,
+                    self._ptr.list[i].inloc,
+                    self._ptr.list[i].bits,
+                    self._ptr.list[i].window[:WINDOW_LENGTH],
+                )
                 result.append(point)
         else:
             result = None
@@ -86,7 +95,7 @@ class WrapperDeflateIndex:
 
     @staticmethod
     @cython.cfunc
-    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint=False) -> WrapperDeflateIndex: # noqa
+    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
         wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
@@ -97,10 +106,9 @@ class WrapperDeflateIndex:
     def from_python_index(mode: int, length: int, have: int, points: List[Point]):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr = cython.declare(
-                    cython.pointer(czran.deflate_index),
-                    cython.cast(cython.pointer(czran.deflate_index), malloc(cython.sizeof(czran.deflate_index))
-                        )
-                    )
+            cython.pointer(czran.deflate_index),
+            cython.cast(cython.pointer(czran.deflate_index), malloc(cython.sizeof(czran.deflate_index))),
+        )
         if _new_ptr is cython.NULL:
             raise MemoryError
 
@@ -138,7 +146,7 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
     return index
 
 
-def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes: # noqa
+def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
@@ -161,7 +169,7 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
     return python_data
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Python Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Python Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 
 class Index:
@@ -174,7 +182,7 @@ class Index:
 
     @staticmethod
     def create_index(input_bytes: bytes, span: int = 2**20):
-        c_index = build_deflate_index(input_bytes, span = span)
+        c_index = build_deflate_index(input_bytes, span=span)
         new_index = Index(c_index.mode, len(input_bytes), c_index.length, c_index.have, c_index.points)
         del c_index
         return new_index
@@ -208,10 +216,10 @@ class Index:
         loc_data = []
         window_data = []
         for i in range(have):
-            loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
+            loc_bytes = dflidx[header_length + (i * point_length) : header_length + ((i + 1) * point_length)]
             loc_data.append(py_struct.unpack('<QQB', loc_bytes))
 
-            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
+            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i + 1))]
             window_data.append(window_bytes)
 
         points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
@@ -227,7 +235,7 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts = [], stops = []):
+    def create_modified_index(self, starts=[], stops=[]):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
             starts: uncompressed locations to provide indexes before.
@@ -250,7 +258,7 @@ class Index:
         if start_index != 0:
             # TODO do not need to execute this line if desired_points[0].bits == 0.
             # Can you modify the data to make this true?
-            desired_points.insert(0, self.points[start_index-1])
+            desired_points.insert(0, self.points[start_index - 1])
 
         stop_index = compressed_offsets.index(desired_points[-1].inloc)
         if stop_index == len(compressed_offsets) - 1:
@@ -262,18 +270,21 @@ class Index:
 
         inloc_offset = desired_points[0].inloc - compressed_offsets[0]
         outloc_offset = desired_points[0].outloc
-        desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
+        desired_points = [
+            Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points
+        ]
 
-        modified_index = Index(self.have,
-                            compressed_range[1] - compressed_range[0],
-                            uncompressed_range[1] - uncompressed_range[0],
-                            len(desired_points),
-                            desired_points
-                            )
+        modified_index = Index(
+            self.have,
+            compressed_range[1] - compressed_range[0],
+            uncompressed_range[1] - uncompressed_range[0],
+            len(desired_points),
+            desired_points,
+        )
         return compressed_range, uncompressed_range, modified_index
 
 
-def get_closest_point(points, value, greater_than = False):
+def get_closest_point(points, value, greater_than=False):
     """Identifies index of closest value in a numpy array to input value.
     Args:
         points: iteratable of point namedtuples
@@ -291,6 +302,6 @@ def get_closest_point(points, value, greater_than = False):
 
     if greater_than:
         closest += 1
-        closest = min(closest, len(sorted_points)-1)
+        closest = min(closest, len(sorted_points) - 1)
 
     return sorted_points[closest]
