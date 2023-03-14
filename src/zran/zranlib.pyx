@@ -1,29 +1,38 @@
-from posix.types cimport off_t
-from posix.stdio cimport fmemopen
-import cython
-from libc.stdlib  cimport free, malloc
-from libc.stdio cimport FILE, fopen, fclose, fdopen
-cimport czran
-from collections import namedtuple
-from typing import Iterable
-from operator import attrgetter
-from cpython.mem cimport PyMem_Malloc, PyMem_Free
+# vim: filetype=python
 import struct as py_struct
-from cpython.bytes cimport PyBytes_AsString, PyBytes_Size
 import zlib
+from collections import namedtuple
+from operator import attrgetter
+from typing import Iterable, List
+
+import cython
+from cython.cimports import zran
+from cython.cimports.cpython.bytes import PyBytes_AsString, PyBytes_Size
+from cython.cimports.cpython.mem import PyMem_Free, PyMem_Malloc
+from cython.cimports.libc.stdio import fclose
+from cython.cimports.libc.stdlib import malloc
+from cython.cimports.posix.stdio import fmemopen
+from cython.cimports.posix.types import off_t
 
 WINDOW_LENGTH = 32768
 GZ_WBITS = 31
 Point = namedtuple("Point", "outloc inloc bits window")
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 class ZranError(Exception):
     pass
 
 
 def check_for_error(return_code):
-    error_codes = {"Z_ERRNO": -1, "Z_STREAM_ERROR": -2, "Z_DATA_ERROR": -3, "Z_MEM_ERROR": -4,
-                   "Z_BUF_ERROR": -5, "Z_VERSION_ERROR": -6}
+    error_codes = {
+        "Z_ERRNO": -1,
+        "Z_STREAM_ERROR": -2,
+        "Z_DATA_ERROR": -3,
+        "Z_MEM_ERROR": -4,
+        "Z_BUF_ERROR": -5,
+        "Z_VERSION_ERROR": -6,
+    }
 
     if return_code < 0:
         if return_code == error_codes["Z_MEM_ERROR"]:
@@ -35,65 +44,72 @@ def check_for_error(return_code):
         elif return_code == error_codes["Z_ERRNO"]:
             raise ZranError("zran: read error on input file")
         elif return_code == error_codes["Z_STREAM_ERROR"]:
-            raise ZranError(f"zran: failed with Z_STREAM_ERROR")
+            raise ZranError("zran: failed with Z_STREAM_ERROR")
         else:
             raise ZranError(f"zran: failed with error code {return_code}")
 
 
-cdef class WrapperDeflateIndex:
-    cdef czran.deflate_index *_ptr
-    cdef bint ptr_owner
+@cython.cclass
+class WrapperDeflateIndex:
+    _ptr: cython.pointer(zran.deflate_index)
+    ptr_owner: cython.bint
 
     def __cinit__(self):
         self.ptr_owner = False
 
     def __dealloc__(self):
-        if self._ptr is not NULL and self.ptr_owner is True:
-            czran.deflate_index_free(self._ptr)
-            self._ptr = NULL
+        if self._ptr is not cython.NULL and self.ptr_owner is True:
+            zran.deflate_index_free(self._ptr)
+            self._ptr = cython.NULL
 
     def __init__(self):
         raise TypeError("This class cannot be instantiated directly")
 
     @property
     def have(self):
-        return self._ptr.have if self._ptr is not NULL else None
+        return self._ptr.have if self._ptr is not cython.NULL else None
 
     @property
     def mode(self):
-        return self._ptr.mode if self._ptr is not NULL else None
+        return self._ptr.mode if self._ptr is not cython.NULL else None
 
     @property
     def length(self):
-        return self._ptr.length if self._ptr is not NULL else None
+        return self._ptr.length if self._ptr is not cython.NULL else None
 
     @property
     def points(self):
-        if self._ptr is not NULL:
+        if self._ptr is not cython.NULL:
             result = []
             for i in range(self.have):
-                point = Point(self._ptr.list[i].outloc,
-                              self._ptr.list[i].inloc,
-                              self._ptr.list[i].bits,
-                              self._ptr.list[i].window[:WINDOW_LENGTH]
-                              )
+                point = Point(
+                    self._ptr.list[i].outloc,
+                    self._ptr.list[i].inloc,
+                    self._ptr.list[i].bits,
+                    self._ptr.list[i].window[:WINDOW_LENGTH],
+                )
                 result.append(point)
         else:
             result = None
         return result
 
     @staticmethod
-    cdef WrapperDeflateIndex from_ptr(czran.deflate_index *_ptr, bint owner=False):
-        cdef WrapperDeflateIndex wrapper = WrapperDeflateIndex.__new__(WrapperDeflateIndex)
+    @cython.cfunc
+    def from_ptr(_ptr: cython.pointer(zran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
+        wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
         return wrapper
 
     @staticmethod
-    def from_python_index(mode, length, have, points):
+    @cython.cfunc
+    def from_python_index(mode: int, length: int, have: int, points: List[Point]):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
-        cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
-        if _new_ptr is NULL:
+        _new_ptr = cython.declare(
+            cython.pointer(zran.deflate_index),
+            cython.cast(cython.pointer(zran.deflate_index), malloc(cython.sizeof(zran.deflate_index))),
+        )
+        if _new_ptr is cython.NULL:
             raise MemoryError
 
         _new_ptr.have = have
@@ -101,8 +117,10 @@ cdef class WrapperDeflateIndex:
         _new_ptr.length = length
 
         # Can't use PyMem_Malloc here because free operation is controlled by C library
-        _new_ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
-        if _new_ptr.list is NULL:
+        list_size = have * cython.sizeof(zran.point_t)
+        _new_ptr.list = cython.cast(cython.pointer(zran.point_t), malloc(list_size))
+
+        if _new_ptr.list is cython.NULL:
             raise MemoryError
 
         for i in range(have):
@@ -114,29 +132,29 @@ cdef class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def build_deflate_index(bytes input_bytes, off_t span = 2**20):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDeflateIndex:
+    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
+    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
-    cdef czran.deflate_index *built
+    built = cython.declare(cython.pointer(zran.deflate_index))
 
-    rtc = czran.deflate_index_build(infile, span, &built)
+    rtc = zran.deflate_index_build(infile, span, cython.address(built))
     fclose(infile)
     check_for_error(rtc)
     index = WrapperDeflateIndex.from_ptr(built, owner=True)
     return index
 
 
-def decompress(bytes input_bytes, index, off_t offset, int length):
-    cdef char* compressed_data = PyBytes_AsString(input_bytes)
-    cdef off_t compressed_data_length = PyBytes_Size(input_bytes)
+def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
+    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
+    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
-    cdef WrapperDeflateIndex rebuilt_index = index.to_c_index()
-    cdef unsigned char* data = <unsigned char *>PyMem_Malloc((length + 1) * sizeof(char))
-
-    rtc_extract = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+    rebuilt_index = cython.declare(WrapperDeflateIndex, index.to_c_index())
+    uncompressed_data_length = (length + 1) * cython.sizeof(cython.uchar)
+    data = cython.declare(cython.p_uchar, cython.cast(cython.p_uchar, PyMem_Malloc(uncompressed_data_length)))
+    rtc_extract = zran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
 
     try:
         check_for_error(rtc_extract)
@@ -151,7 +169,7 @@ def decompress(bytes input_bytes, index, off_t offset, int length):
     return python_data
 
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Python Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Python Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 
 class Index:
@@ -164,7 +182,7 @@ class Index:
 
     @staticmethod
     def create_index(input_bytes: bytes, span: int = 2**20):
-        c_index = build_deflate_index(input_bytes, span = span)
+        c_index = build_deflate_index(input_bytes, span=span)
         new_index = Index(c_index.mode, len(input_bytes), c_index.length, c_index.have, c_index.points)
         del c_index
         return new_index
@@ -198,11 +216,10 @@ class Index:
         loc_data = []
         window_data = []
         for i in range(have):
-            i_next = i + 1
-            loc_bytes = dflidx[header_length+(i*point_length) : header_length+((i+1)*point_length)]
+            loc_bytes = dflidx[header_length + (i * point_length) : header_length + ((i + 1) * point_length)]
             loc_data.append(py_struct.unpack('<QQB', loc_bytes))
 
-            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i+1))]
+            window_bytes = dflidx[point_end + (WINDOW_LENGTH * i) : point_end + (WINDOW_LENGTH * (i + 1))]
             window_data.append(window_bytes)
 
         points = [Point(loc[0], loc[1], loc[2], window) for loc, window in zip(loc_data, window_data)]
@@ -218,7 +235,7 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts = [], stops = []):
+    def create_modified_index(self, starts=[], stops=[]):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
             starts: uncompressed locations to provide indexes before.
@@ -230,7 +247,6 @@ class Index:
             range of compressed data, range of uncompressed data, a modified Index.
         """
         compressed_offsets = [x.inloc for x in self.points]
-        uncompressed_offsets = [x.outloc for x in self.points]
         if not (starts or stops):
             raise ValueError("Either starts or stops must be specified")
 
@@ -242,7 +258,7 @@ class Index:
         if start_index != 0:
             # TODO do not need to execute this line if desired_points[0].bits == 0.
             # Can you modify the data to make this true?
-            desired_points.insert(0, self.points[start_index-1])
+            desired_points.insert(0, self.points[start_index - 1])
 
         stop_index = compressed_offsets.index(desired_points[-1].inloc)
         if stop_index == len(compressed_offsets) - 1:
@@ -254,18 +270,21 @@ class Index:
 
         inloc_offset = desired_points[0].inloc - compressed_offsets[0]
         outloc_offset = desired_points[0].outloc
-        desired_points = [Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points]
-        
-        modified_index = Index(self.have,
-                            compressed_range[1] - compressed_range[0],
-                            uncompressed_range[1] - uncompressed_range[0],
-                            len(desired_points),
-                            desired_points
-                            )
+        desired_points = [
+            Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points
+        ]
+
+        modified_index = Index(
+            self.have,
+            compressed_range[1] - compressed_range[0],
+            uncompressed_range[1] - uncompressed_range[0],
+            len(desired_points),
+            desired_points,
+        )
         return compressed_range, uncompressed_range, modified_index
 
 
-def get_closest_point(points, value, greater_than = False):
+def get_closest_point(points, value, greater_than=False):
     """Identifies index of closest value in a numpy array to input value.
     Args:
         points: iteratable of point namedtuples
@@ -283,6 +302,6 @@ def get_closest_point(points, value, greater_than = False):
 
     if greater_than:
         closest += 1
-        closest = min(closest, len(sorted_points)-1)
+        closest = min(closest, len(sorted_points) - 1)
 
     return sorted_points[closest]
