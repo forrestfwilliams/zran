@@ -6,7 +6,7 @@ from operator import attrgetter
 from typing import Iterable, List
 
 import cython
-from cython.cimports import czran
+from cython.cimports import zran
 from cython.cimports.cpython.bytes import PyBytes_AsString, PyBytes_Size
 from cython.cimports.cpython.mem import PyMem_Free, PyMem_Malloc
 from cython.cimports.libc.stdio import fclose
@@ -51,7 +51,7 @@ def check_for_error(return_code):
 
 @cython.cclass
 class WrapperDeflateIndex:
-    _ptr: cython.pointer(czran.deflate_index)
+    _ptr: cython.pointer(zran.deflate_index)
     ptr_owner: cython.bint
 
     def __cinit__(self):
@@ -59,7 +59,7 @@ class WrapperDeflateIndex:
 
     def __dealloc__(self):
         if self._ptr is not cython.NULL and self.ptr_owner is True:
-            czran.deflate_index_free(self._ptr)
+            zran.deflate_index_free(self._ptr)
             self._ptr = cython.NULL
 
     def __init__(self):
@@ -95,7 +95,7 @@ class WrapperDeflateIndex:
 
     @staticmethod
     @cython.cfunc
-    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
+    def from_ptr(_ptr: cython.pointer(zran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
         wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
@@ -106,8 +106,8 @@ class WrapperDeflateIndex:
     def from_python_index(mode: int, length: int, have: int, points: List[Point]):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr = cython.declare(
-            cython.pointer(czran.deflate_index),
-            cython.cast(cython.pointer(czran.deflate_index), malloc(cython.sizeof(czran.deflate_index))),
+            cython.pointer(zran.deflate_index),
+            cython.cast(cython.pointer(zran.deflate_index), malloc(cython.sizeof(zran.deflate_index))),
         )
         if _new_ptr is cython.NULL:
             raise MemoryError
@@ -117,8 +117,8 @@ class WrapperDeflateIndex:
         _new_ptr.length = length
 
         # Can't use PyMem_Malloc here because free operation is controlled by C library
-        list_size = have * cython.sizeof(czran.point_t)
-        _new_ptr.list = cython.cast(cython.pointer(czran.point_t), malloc(list_size))
+        list_size = have * cython.sizeof(zran.point_t)
+        _new_ptr.list = cython.cast(cython.pointer(zran.point_t), malloc(list_size))
 
         if _new_ptr.list is cython.NULL:
             raise MemoryError
@@ -137,9 +137,9 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
 
-    built = cython.declare(cython.pointer(czran.deflate_index))
+    built = cython.declare(cython.pointer(zran.deflate_index))
 
-    rtc = czran.deflate_index_build(infile, span, cython.address(built))
+    rtc = zran.deflate_index_build(infile, span, cython.address(built))
     fclose(infile)
     check_for_error(rtc)
     index = WrapperDeflateIndex.from_ptr(built, owner=True)
@@ -154,7 +154,7 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
     rebuilt_index = cython.declare(WrapperDeflateIndex, index.to_c_index())
     uncompressed_data_length = (length + 1) * cython.sizeof(cython.uchar)
     data = cython.declare(cython.p_uchar, cython.cast(cython.p_uchar, PyMem_Malloc(uncompressed_data_length)))
-    rtc_extract = czran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
+    rtc_extract = zran.deflate_index_extract(infile, rebuilt_index._ptr, offset, data, length)
 
     try:
         check_for_error(rtc_extract)
