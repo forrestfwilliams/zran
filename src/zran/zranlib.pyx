@@ -5,7 +5,7 @@ from libc.stdlib  cimport free, malloc
 from libc.stdio cimport FILE, fopen, fclose, fdopen
 cimport czran
 from collections import namedtuple
-from typing import Iterable
+from typing import Iterable, List
 from operator import attrgetter
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import struct as py_struct
@@ -40,32 +40,33 @@ def check_for_error(return_code):
             raise ZranError(f"zran: failed with error code {return_code}")
 
 
-cdef class WrapperDeflateIndex:
-    cdef czran.deflate_index *_ptr
-    cdef bint ptr_owner
+@cython.cclass
+class WrapperDeflateIndex:
+    _ptr: cython.pointer(czran.deflate_index)
+    ptr_owner: cython.bint
 
     def __cinit__(self):
         self.ptr_owner = False
 
     def __dealloc__(self):
-        if self._ptr is not NULL and self.ptr_owner is True:
+        if self._ptr is not cython.NULL and self.ptr_owner is True:
             czran.deflate_index_free(self._ptr)
-            self._ptr = NULL
+            self._ptr = cython.NULL
 
     def __init__(self):
         raise TypeError("This class cannot be instantiated directly")
 
     @property
     def have(self):
-        return self._ptr.have if self._ptr is not NULL else None
+        return self._ptr.have if self._ptr is not cython.NULL else None
 
     @property
     def mode(self):
-        return self._ptr.mode if self._ptr is not NULL else None
+        return self._ptr.mode if self._ptr is not cython.NULL else None
 
     @property
     def length(self):
-        return self._ptr.length if self._ptr is not NULL else None
+        return self._ptr.length if self._ptr is not cython.NULL else None
 
     @property
     def points(self):
@@ -83,17 +84,22 @@ cdef class WrapperDeflateIndex:
         return result
 
     @staticmethod
-    cdef WrapperDeflateIndex from_ptr(czran.deflate_index *_ptr, bint owner=False):
-        cdef WrapperDeflateIndex wrapper = WrapperDeflateIndex.__new__(WrapperDeflateIndex)
+    @cython.cfunc
+    def from_ptr(_ptr: cython.pointer(czran.deflate_index), owner: cython.bint=False) -> WrapperDeflateIndex:
+        wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
         return wrapper
 
     @staticmethod
-    def from_python_index(mode, length, have, points):
+    def from_python_index(mode: int, length: int, have: int, points: List[Point]):
         # Can't use PyMem_Malloc here because free operation is controlled by C library
-        cdef czran.deflate_index *_new_ptr = <czran.deflate_index *>malloc(sizeof(czran.deflate_index))
-        if _new_ptr is NULL:
+        _new_ptr = cython.declare(
+                    cython.pointer(czran.deflate_index),
+                    cython.cast(cython.pointer(czran.deflate_index), malloc(cython.sizeof(czran.deflate_index))
+                        )
+                    )
+        if _new_ptr is cython.NULL:
             raise MemoryError
 
         _new_ptr.have = have
@@ -102,6 +108,11 @@ cdef class WrapperDeflateIndex:
 
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr.list = <czran.point_t *>malloc(have * sizeof(czran.point_t))
+        # _new_ptr.list = cython.declare(cython.pointer(czran.point_t),
+        #                                 cython.cast(cython.pointer(czran.point_t),
+        #                                             malloc(cython.sizeof(have * cython.sizeof(czran.point_t)))
+        #                                             )
+        #                                )
         if _new_ptr.list is NULL:
             raise MemoryError
 
