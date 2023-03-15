@@ -8,7 +8,7 @@ dependencies:
   # For packaging, and testing
   - setuptools
   - wheel
-  - cython>=3.0.0b1
+  - cython
   - pytest
   - pytest-console-scripts
   - pytest-cov
