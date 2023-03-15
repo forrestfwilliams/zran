@@ -1,0 +1,14 @@
+name: zran
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  # For packaging, and testing
+  - setuptools
+  - wheel
+  - cython>=3.0.0b1
+  - pytest
+  - pytest-console-scripts
+  - pytest-cov
