@@ -49,4 +49,4 @@ test-command = "pytest {package}/tests"
 archs = ["x86_64", "arm64"]
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+archs = ["x86_64"]
