@@ -32,10 +32,6 @@ classifiers=[
 Homepage = "https://github.com/forrestfwilliams/zran"
 "Bug Tracker" = "https://github.com/forrestfwilliams/zran/issues"
 
-[tool.cibuildwheel]
-test-requires = "pytest"
-test-command = "pytest {package}/tests"
-
 [tool.black]
 line-length = 120
 skip-string-normalization = true
@@ -43,3 +39,14 @@ include = '\.pyx?$'
 
 [tool.ruff]
 line-length = 120
+
+[tool.cibuildwheel]
+build = "cp3{8,9,10}-*"
+test-requires = "pytest"
+test-command = "pytest {package}/tests"
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
