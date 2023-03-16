@@ -26,15 +26,14 @@ To create and save the index:
 import zran
 
 with open('compressed.gz', 'rb') as f:
-    index = zran.create_deflate_index(f)
+    index = zran.create_deflate_index(f.read())
 
 index.to_file('index.dflidx')
 ```
 
 Then, to use the index and read data:
 ```python
-with open('compressed.gz', 'rb') as f:
-    data = zran.extract_data(f, 'index.dflidx', offset=100, length=1000)
+data = zran.decompress(compressed_file, 'index.dflidx', start, length)
 ```
 
 That's it!
