@@ -1,0 +1,15 @@
+name: Tag New Version
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  call-bump-version-workflow:
+    uses: ASFHyP3/actions/.github/workflows/reusable-bump-version.yml@v0.7.0
+    with:
+      user: zran-bot
+      email: ffwilliams2@alaska.edu
+    secrets:
+      USER_TOKEN: ${{ secrets.ZRAN_BOT_PAK }}
