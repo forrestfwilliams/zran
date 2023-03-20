@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel", "cython"]
+requires = ["setuptools>=61.0", "wheel>=0.40.0", "cython>=3.0.0b1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -11,16 +11,15 @@ where = ["src"]
 
 [project]
 name = "zran"
-version = "0.0.0"
 requires-python = ">=3.8"
+dynamic = ["version"]
 authors = [
     {name="Forrest Williams", email="ffwilliams2@alaska.edu"},
 ]
 description = "Utility for randomly accessing DEFLATE-compressed data"
 readme = "README.md"
 classifiers=[
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: zlib/libpng License",
+    "Intended Audience :: Developers", "License :: OSI Approved :: zlib/libpng License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -33,6 +32,21 @@ classifiers=[
 Homepage = "https://github.com/forrestfwilliams/zran"
 "Bug Tracker" = "https://github.com/forrestfwilliams/zran/issues"
 
+[tool.black]
+line-length = 120
+skip-string-normalization = true
+include = '\.pyx?$'
+
+[tool.ruff]
+line-length = 120
+
 [tool.cibuildwheel]
+build = "cp3{8,9,10}-*"
 test-requires = "pytest"
 test-command = "pytest {package}/tests"
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
