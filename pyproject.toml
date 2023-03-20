@@ -50,6 +50,11 @@ include = '\.pyx?$'
 [tool.ruff]
 line-length = 120
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
 [tool.cibuildwheel]
 build = "cp3{8,9,10,11}-*"
 test-requires = "pytest"
