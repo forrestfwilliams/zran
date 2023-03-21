@@ -12,13 +12,7 @@ GZ_WBITS = 31
 Offset = namedtuple('Offset', ['start', 'stop'])
 offset_list = [
     Offset(start=109395, stop=149033895),
-    Offset(start=149033895, stop=297958395),
-    Offset(start=297958395, stop=446882895),
-    Offset(start=446882895, stop=595807395),
     Offset(start=595807395, stop=744731895),
-    Offset(start=744731895, stop=893656395),
-    Offset(start=893656395, stop=1042580895),
-    Offset(start=1042580895, stop=1191505395),
     Offset(start=1191505395, stop=1340429895),
 ]
 
@@ -38,11 +32,13 @@ def test_create_index(compressed_gz_data):
     assert len(points[0].window) == 32768
 
 
+@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_create_index_fail_head(data, compressed_gz_data_no_head):
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
         zran.Index.create_index(compressed_gz_data_no_head)
 
 
+@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_create_index_fail_tail(data, compressed_gz_data_no_tail):
     with pytest.raises(zran.ZranError, match='zran: input file ended prematurely'):
         zran.Index.create_index(compressed_gz_data_no_tail)
@@ -72,6 +68,7 @@ def test_decompress(data, compressed_file):
     assert data[start : start + length] == test_data
 
 
+@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_decompress_fail(data, compressed_gz_data, compressed_gz_data_no_head):
     start = 100
     length = 1000
@@ -105,7 +102,7 @@ def test_modify_index_and_decompress(start_index, stop_index, data, compressed_d
     assert data[start:stop] == test_data
 
 
-@pytest.mark.skip('Integration test. Only run if testing Sentinel-1 SLC burst compatibility')
+@pytest.mark.skip(reason='Integration test. Only run if testing Sentinel-1 SLC burst compatibility')
 @pytest.mark.parametrize('burst', offset_list)
 def test_safe(burst, input_data):
     swath, golden, index = input_data

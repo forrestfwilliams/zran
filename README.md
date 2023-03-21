@@ -27,7 +27,7 @@ import zran
 
 with open('compressed.gz', 'rb') as f:
     compressed_file = f.read()
-    index = zran.create_deflate_index(compressed_file)
+    index = zran.Index.create_index(compressed_file)
 ```
 This `Index` can be written to a file (`index.to_file('index.dflidx')`), or directly passed to `zran.deompress`:
 ```python
