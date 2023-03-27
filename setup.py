@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 """Setup script for zran package.
+
+This script was modified from the setup.py file created by
+Paul McCarthy for the indexed_gzip project. You can find the
+project at this link: https://github.com/pauldmccarthy/indexed_gzip.
 """
 
 import glob
