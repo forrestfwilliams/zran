@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [PEP 440](https://www.python.org/dev/peps/pep-0440/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4]
+### Added
+* New information to the README.md concerning contributions and similar projects
+* Contribution note to setup.py
 
 ## [0.0.3]
 ### Fixed
