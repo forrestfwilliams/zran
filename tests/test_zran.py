@@ -32,13 +32,13 @@ def test_create_index(compressed_gz_data):
     assert len(points[0].window) == 32768
 
 
-@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
+# @pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_create_index_fail_head(data, compressed_gz_data_no_head):
     with pytest.raises(zran.ZranError, match='zran: compressed data error in input file'):
         zran.Index.create_index(compressed_gz_data_no_head)
 
 
-@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
+# @pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_create_index_fail_tail(data, compressed_gz_data_no_tail):
     with pytest.raises(zran.ZranError, match='zran: input file ended prematurely'):
         zran.Index.create_index(compressed_gz_data_no_tail)
@@ -68,7 +68,7 @@ def test_decompress(data, compressed_file):
     assert data[start : start + length] == test_data
 
 
-@pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
+# @pytest.mark.skip(reason='Currently unstable. Will sometimes not fail if data has certain (unknown) properties')
 def test_decompress_fail(data, compressed_gz_data, compressed_gz_data_no_head):
     start = 100
     length = 1000
@@ -86,11 +86,41 @@ def test_get_closest_point():
     assert r2.outloc == 4
 
 
+def test_modify_index_and_beginning_decompress(data, compressed_dfl_data):
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
+    start = 0
+    stop = 100
+
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    test_data = zran.decompress(
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+        new_index,
+        start - uncompressed_range[0],
+        stop - start,
+    )
+    assert data[start:stop] == test_data
+
+
 @pytest.mark.parametrize('start_index,stop_index', ((0, 5), (4, 10), (9, -1)))
-def test_modify_index_and_decompress(start_index, stop_index, data, compressed_dfl_data):
+def test_modify_index_and_interior_decompress(start_index, stop_index, data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     start = index.points[start_index].outloc + 100
     stop = index.points[stop_index].outloc + 100
+
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    test_data = zran.decompress(
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+        new_index,
+        start - uncompressed_range[0],
+        stop - start,
+    )
+    assert data[start:stop] == test_data
+
+
+def test_modify_index_and_end_decompress(data, compressed_dfl_data):
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
+    start = index.points[-1].outloc + 100
+    stop = len(data)
 
     compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
     test_data = zran.decompress(

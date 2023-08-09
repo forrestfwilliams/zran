@@ -1,4 +1,5 @@
 import os
+import random
 import zlib
 
 import pytest
@@ -31,7 +32,7 @@ def input_data():
 
 
 def create_compressed_data(uncompressed_data, wbits, start=None, stop=None):
-    compress_obj = zlib.compressobj(wbits=wbits)
+    compress_obj = zlib.compressobj(wbits=wbits, level=9)
     compressed = compress_obj.compress(uncompressed_data)
     compressed += compress_obj.flush()
 
@@ -57,7 +58,10 @@ def gz_points():
 
 @pytest.fixture(scope='module')
 def data():
-    out = os.urandom(2**22)
+    # Can't use os.random directly because there needs to be some
+    # repitition in order for compression to be effective
+    words = [os.urandom(8) for _ in range(1000)]
+    out = b''.join([random.choice(words) for _ in range(524288)])
     return out
 
 
