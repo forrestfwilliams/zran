@@ -270,16 +270,24 @@ class Index:
 
         inloc_offset = desired_points[0].inloc - compressed_offsets[0]
         outloc_offset = desired_points[0].outloc
-        desired_points = [
-            Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points
-        ]
+
+        output_points = []
+        start_point_is_last_in_origional = start_index == len(compressed_offsets) - 1
+        for i, point in enumerate(desired_points):
+            last_point_in_new_index = i == len(desired_points) - 1
+            if last_point_in_new_index and not start_point_is_last_in_origional:
+                window = bytearray(WINDOW_LENGTH)
+            else:
+                window = point.window
+            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, window)
+            output_points.append(new_point)
 
         modified_index = Index(
             self.have,
             compressed_range[1] - compressed_range[0],
             uncompressed_range[1] - uncompressed_range[0],
-            len(desired_points),
-            desired_points,
+            len(output_points),
+            output_points,
         )
         return compressed_range, uncompressed_range, modified_index
 
