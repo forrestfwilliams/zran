@@ -108,6 +108,7 @@ def test_modify_index_and_interior_decompress(start_index, stop_index, data, com
     stop = index.points[stop_index].outloc + 100
 
     compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    breakpoint()
     test_data = zran.decompress(
         compressed_dfl_data[compressed_range[0] : compressed_range[1]],
         new_index,
@@ -128,6 +129,26 @@ def test_modify_index_and_end_decompress(data, compressed_dfl_data):
         new_index,
         start - uncompressed_range[0],
         stop - start,
+    )
+    assert data[start:stop] == test_data
+
+
+def test_index_and_read_late(data, compressed_dfl_data):
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
+    with pytest.raises(ValueError, match='Offset and length specified would result in reading past the file bounds'):
+        zran.decompress(compressed_dfl_data, index, 0, len(data))
+
+
+def test_modify_index_and_read_late(data, compressed_dfl_data):
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
+    start = index.points[5].outloc
+    stop = index.points[10].outloc
+
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    offset = start - uncompressed_range[0]
+    length = stop - start
+    test_data = zran.decompress(
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, offset, length
     )
     assert data[start:stop] == test_data
 

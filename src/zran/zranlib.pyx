@@ -146,7 +146,10 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
     return index
 
 
-def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
+def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes: # noqa
+    if offset + length > index.uncompressed_size:
+        raise ValueError('Offset and length specified would result in reading past the file bounds')
+
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
@@ -179,6 +182,10 @@ class Index:
         self.mode = mode
         self.have = have
         self.points = points
+        if self.points[0].outloc + 1 == self.uncompressed_size:
+            self.modified = True
+        else:
+            self.modified = False
 
     @staticmethod
     def create_index(input_bytes: bytes, span: int = 2**20):
