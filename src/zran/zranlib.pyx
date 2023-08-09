@@ -275,7 +275,9 @@ class Index:
         start_point_is_last_in_origional = start_index == len(compressed_offsets) - 1
         for i, point in enumerate(desired_points):
             last_point_in_new_index = i == len(desired_points) - 1
-            if last_point_in_new_index and not start_point_is_last_in_origional:
+            if i == 0:
+                window = bytearray(WINDOW_LENGTH)
+            elif last_point_in_new_index and not start_point_is_last_in_origional:
                 window = bytearray(WINDOW_LENGTH)
             else:
                 window = point.window
