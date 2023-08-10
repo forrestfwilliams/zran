@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [PEP 440](https://www.python.org/dev/peps/pep-0440/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5]
+### Added
+* Set the window info to all zeros for first point in first point.bits != 0 case. This decreased compressed index size
+* New default for `create_modified_index` is to remove the last stop point, since the final point represents the end of the data
+* Update testing to increase coverage of `create_modified_index` corner cases
+
 ## [0.0.4]
 ### Added
 * New information to the README.md concerning contributions and similar projects

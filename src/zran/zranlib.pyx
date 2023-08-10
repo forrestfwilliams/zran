@@ -1,6 +1,7 @@
 # vim: filetype=python
 import struct as py_struct
 import zlib
+import warnings
 from collections import namedtuple
 from operator import attrgetter
 from typing import Iterable, List
@@ -147,6 +148,21 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
 
 def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
+    first_bit_zero = index.points[0].bits == 0
+    if index.have > 1:
+        offset_before_second_point = offset < index.points[1].outloc
+    else:
+        offset_before_second_point = False
+
+    if not first_bit_zero and offset_before_second_point:
+        raise ValueError(
+            'When first index bit != 0, offset must be at or after second index point'
+            f' ({index.points[1].outloc} for this index)'
+        )
+
+    if offset + length > index.uncompressed_size:
+        raise ValueError('Offset and length specified would result in reading past the file bounds')
+
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
@@ -235,7 +251,7 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts=[], stops=[]):
+    def create_modified_index(self, starts=[], stops=[], remove_last_stop=True):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
             starts: uncompressed locations to provide indexes before.
@@ -270,16 +286,28 @@ class Index:
 
         inloc_offset = desired_points[0].inloc - compressed_offsets[0]
         outloc_offset = desired_points[0].outloc
-        desired_points = [
-            Point(x.outloc - outloc_offset, x.inloc - inloc_offset, x.bits, x.window) for x in desired_points
-        ]
+
+        output_points = []
+        for i, point in enumerate(desired_points):
+            if i == 0:
+                window = bytearray(WINDOW_LENGTH)
+            else:
+                window = point.window
+            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, window)
+            output_points.append(new_point)
+
+        if stops and remove_last_stop:
+            if len(output_points) <= 2:
+                warnings.warn(UserWarning('Indexes must have at least two points, not removing last stop'))
+            else:
+                output_points = output_points[:-1]
 
         modified_index = Index(
             self.have,
             compressed_range[1] - compressed_range[0],
             uncompressed_range[1] - uncompressed_range[0],
-            len(desired_points),
-            desired_points,
+            len(output_points),
+            output_points,
         )
         return compressed_range, uncompressed_range, modified_index
 
