@@ -86,7 +86,7 @@ def test_get_closest_point():
     assert r2.outloc == 4
 
 
-def test_modify_index_and_beginning_decompress(data, compressed_dfl_data):
+def test_modify_index_and_head_decompress(data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     start = 0
     stop = 100
@@ -108,7 +108,6 @@ def test_modify_index_and_interior_decompress(start_index, stop_index, data, com
     stop = index.points[stop_index].outloc + 100
 
     compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
-    breakpoint()
     test_data = zran.decompress(
         compressed_dfl_data[compressed_range[0] : compressed_range[1]],
         new_index,
@@ -118,7 +117,7 @@ def test_modify_index_and_interior_decompress(start_index, stop_index, data, com
     assert data[start:stop] == test_data
 
 
-def test_modify_index_and_end_decompress(data, compressed_dfl_data):
+def test_modify_index_and_tail_decompress(data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     start = index.points[-1].outloc + 100
     stop = len(data)
@@ -133,25 +132,37 @@ def test_modify_index_and_end_decompress(data, compressed_dfl_data):
     assert data[start:stop] == test_data
 
 
-def test_index_and_read_late(data, compressed_dfl_data):
+def test_index_after_end_decompress(data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     with pytest.raises(ValueError, match='Offset and length specified would result in reading past the file bounds'):
-        zran.decompress(compressed_dfl_data, index, 0, len(data))
+        zran.decompress(compressed_dfl_data, index, 0, len(data) + 1)
 
 
-def test_modify_index_and_read_late(data, compressed_dfl_data):
+def test_modified_index_before_start_decompress(data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**18)
     start = index.points[5].outloc
     stop = index.points[10].outloc
 
     compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
-    offset = start - uncompressed_range[0]
-    length = stop - start
-    test_data = zran.decompress(
-        compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, offset, length
-    )
-    assert data[start:stop] == test_data
+    if new_index.points[0].bits != 0:
+        msg = 'When first index bit != 0, offset must be at or after second index point *'
+        with pytest.raises(ValueError, match=msg):
+            zran.decompress(compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, 0, 10)
 
+
+def test_modified_after_end_decompress(data, compressed_dfl_data):
+    index = zran.Index.create_index(compressed_dfl_data, span=2**18)
+    start = index.points[5].outloc
+    stop = index.points[10].outloc
+
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    with pytest.raises(ValueError, match='Offset and length specified would result in reading past the file bounds'):
+        zran.decompress(
+            compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+            new_index,
+            new_index.points[1].outloc + 10,
+            new_index.uncompressed_size,
+        )
 
 @pytest.mark.skip(reason='Integration test. Only run if testing Sentinel-1 SLC burst compatibility')
 @pytest.mark.parametrize('burst', offset_list)
