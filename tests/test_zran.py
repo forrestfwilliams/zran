@@ -91,12 +91,11 @@ def test_modify_index_and_head_decompress(data, compressed_dfl_data):
     start = 0
     stop = 100
 
-    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop], False)
+    length = start - uncompressed_range[0]
+    offset = stop - start
     test_data = zran.decompress(
-        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
-        new_index,
-        start - uncompressed_range[0],
-        stop - start,
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, length, offset
     )
     assert data[start:stop] == test_data
 
@@ -108,11 +107,10 @@ def test_modify_index_and_interior_decompress(start_index, stop_index, data, com
     stop = index.points[stop_index].outloc + 100
 
     compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    length = start - uncompressed_range[0]
+    offset = stop - start
     test_data = zran.decompress(
-        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
-        new_index,
-        start - uncompressed_range[0],
-        stop - start,
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, length, offset
     )
     assert data[start:stop] == test_data
 
@@ -122,12 +120,11 @@ def test_modify_index_and_tail_decompress(data, compressed_dfl_data):
     start = index.points[-1].outloc + 100
     stop = len(data)
 
-    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop])
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop], False)
+    length = start - uncompressed_range[0]
+    offset = stop - start
     test_data = zran.decompress(
-        compressed_dfl_data[compressed_range[0] : compressed_range[1]],
-        new_index,
-        start - uncompressed_range[0],
-        stop - start,
+        compressed_dfl_data[compressed_range[0] : compressed_range[1]], new_index, length, offset
     )
     assert data[start:stop] == test_data
 
@@ -164,9 +161,10 @@ def test_modified_after_end_decompress(data, compressed_dfl_data):
             new_index.uncompressed_size,
         )
 
+
 @pytest.mark.skip(reason='Integration test. Only run if testing Sentinel-1 SLC burst compatibility')
 @pytest.mark.parametrize('burst', offset_list)
-def test_safe(burst, input_data):
+def test_burst_extraction(burst, input_data):
     swath, golden, index = input_data
     compressed_range, uncompressed_range, new_index = index.create_modified_index([burst.start], [burst.stop])
     data_subset = swath[compressed_range[0] : compressed_range[1]]
