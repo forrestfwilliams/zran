@@ -148,20 +148,8 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
 
 def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
-    # first_bit_zero = index.points[0].bits == 0
-    # if index.have > 1:
-    #     offset_before_second_point = offset < index.points[1].outloc
-    # else:
-    #     offset_before_second_point = False
-
-    # if not first_bit_zero and offset_before_second_point:
-    #     raise ValueError(
-    #         'When first index bit != 0, offset must be at or after second index point'
-    #         f' ({index.points[1].outloc} for this index)'
-    #     )
-
-    # if offset + length > index.uncompressed_size:
-    #     raise ValueError('Offset and length specified would result in reading past the file bounds')
+    if offset + length > index.uncompressed_size:
+        raise ValueError('Offset and length specified would result in reading past the file bounds')
 
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
