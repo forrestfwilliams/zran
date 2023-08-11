@@ -179,7 +179,7 @@ def test_modified_nonzero_first_bits(data, compressed_dfl_data):
 @pytest.mark.parametrize('burst', offset_list)
 def test_burst_extraction(burst, input_data):
     swath, golden, index = input_data
-    compressed_range, uncompressed_range, new_index = index.create_modified_index([burst.start], [burst.stop])
+    compressed_range, uncompressed_range, new_index = index.create_modified_index([burst.start], burst.stop)
     data_subset = swath[compressed_range[0] : compressed_range[1]]
     test_data = zran.decompress(data_subset, new_index, burst.start - uncompressed_range[0], burst.stop - burst.start)
     assert golden[burst.start : burst.stop] == test_data
