@@ -164,31 +164,27 @@ def test_modified_after_end_decompress(data, compressed_dfl_data):
 
 def test_modified_nonzero_first_bits(data, compressed_dfl_data):
     index = zran.Index.create_index(compressed_dfl_data, span=2**16)
-    zero_bit_loc = []
-    nonzero_bit_loc = []
-    for i, point in enumerate(index.points):
-        if point.bits == 0:
-            zero_bit_loc.append(i)
-        else:
-            nonzero_bit_loc.append(i)
 
-    if len(zero_bit_loc) > 1 and len(nonzero_bit_loc) > 1:
-        for loc_list in [nonzero_bit_loc, zero_bit_loc]:
-            for i in loc_list:
-                second_index = loc_list[1]
-                start = index.points[second_index].outloc
-                compressed_range, uncompressed_range, new_index = index.create_modified_index([start])
-                length = uncompressed_range[1] - uncompressed_range[0]
-                test_data = zran.decompress(
-                    compressed_dfl_data[compressed_range[0] : compressed_range[1]],
-                    new_index,
-                    0,
-                    length,
-                )
-                true_data = data[uncompressed_range[0] : uncompressed_range[1]]
-                assert true_data == test_data
-    else:
+    nonfirst_zero_bit = False
+    for point in index.points[1:]:
+        if point.bits == 0:
+            nonfirst_zero_bit = True
+
+    if not nonfirst_zero_bit:
         print('Not enough index points to test this')
+
+    for point in index.points[1:]:
+        start = point.outloc
+        compressed_range, uncompressed_range, new_index = index.create_modified_index([start])
+        length = uncompressed_range[1] - uncompressed_range[0]
+        test_data = zran.decompress(
+            compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+            new_index,
+            0,
+            length,
+        )
+        true_data = data[uncompressed_range[0] : uncompressed_range[1]]
+        assert true_data == test_data
 
 
 @pytest.mark.skip(reason='Integration test. Only run if testing Sentinel-1 SLC burst compatibility')
