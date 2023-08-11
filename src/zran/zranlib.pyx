@@ -284,7 +284,7 @@ class Index:
             compressed_range = (desired_points[0].inloc, self.points[stop_index].inloc - 1)
             uncompressed_range = (desired_points[0].outloc, self.points[stop_index].outloc - 1)
 
-        inloc_offset = desired_points[0].inloc - compressed_offsets[0]
+        inloc_offset = desired_points[0].inloc - compressed_offsets[0] - 1
         outloc_offset = desired_points[0].outloc
 
         output_points = []
