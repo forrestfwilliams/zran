@@ -1,10 +1,9 @@
 # vim: filetype=python
 import struct as py_struct
 import zlib
-import warnings
 from collections import namedtuple
 from operator import attrgetter
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 import cython
 from cython.cimports import zran
@@ -25,7 +24,9 @@ class ZranError(Exception):
     pass
 
 
-def check_for_error(return_code):
+def check_for_error(return_code: int):
+    """Check the return code of a zran function and raise an exception if it is an error code."""
+
     error_codes = {
         "Z_ERRNO": -1,
         "Z_STREAM_ERROR": -2,
@@ -52,6 +53,7 @@ def check_for_error(return_code):
 
 @cython.cclass
 class WrapperDeflateIndex:
+    """Wrapper for zran.deflate_index struct."""
     _ptr: cython.pointer(zran.deflate_index)
     ptr_owner: cython.bint
 
@@ -97,6 +99,7 @@ class WrapperDeflateIndex:
     @staticmethod
     @cython.cfunc
     def from_ptr(_ptr: cython.pointer(zran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
+        """Construct a WrapperDeflateIndex object from a pointer pointing to a deflate_index struct in memory"""
         wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
@@ -105,6 +108,7 @@ class WrapperDeflateIndex:
     @staticmethod
     @cython.cfunc
     def from_python_index(mode: int, length: int, have: int, points: List[Point]):
+        """Construct a WrapperDeflateIndex object from a pure-python Index object"""
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr = cython.declare(
             cython.pointer(zran.deflate_index),
@@ -134,6 +138,16 @@ class WrapperDeflateIndex:
 
 
 def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDeflateIndex:
+    """Build a zran deflate index from a bytes object containing compressed data.
+
+    Args:
+        input_bytes: A bytes object containing compressed data.
+        span: The number of bytes to read from the input file at a time. Defaults to 2**20.
+
+    Returns:
+        A WrapperDeflateIndex object.
+    """
+
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
@@ -148,6 +162,17 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
 
 def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
+    """Decompress a range of bytes from a compressed file.
+
+    Args:
+        input_bytes: A bytes object containing compressed data.
+        index: An Index object.
+        offset: The offset in the uncompressed data to start reading from.
+        length: The number of bytes to read from the uncompressed data.
+
+    Returns:
+        A bytes object containing the decompressed data.
+    """
     if offset + length > index.uncompressed_size:
         raise ValueError('Offset and length specified would result in reading past the file bounds')
 
@@ -178,9 +203,17 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
 
 class Index:
     def __init__(self, mode: int, compressed_size: int, uncompressed_size: int, have: int, points: Iterable[Point]):
+        """ Create a new index object
+
+        mode: The mode of the index
+        compressed_size: The size of the compressed data represented by the index
+        uncompressed_size: The size of the uncompressed data represented by the index
+        have: The number of points in the index
+        points: The points in the index
+        """
+        self.mode = mode
         self.compressed_size = compressed_size
         self.uncompressed_size = uncompressed_size
-        self.mode = mode
         self.have = have
         self.points = points
 
@@ -239,7 +272,7 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, locations, end_location=None):
+    def create_modified_index(self, locations: Iterable[int], end_location: Optional[int] = None):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
             locations: A list of uncompressed locations to be included in the new index.
@@ -287,7 +320,7 @@ class Index:
         return compressed_range, uncompressed_range, modified_index
 
 
-def get_closest_point(points, value, greater_than=False):
+def get_closest_point(points: Iterable[Point], value: int, greater_than: bool = False):
     """Identifies index of closest value in a numpy array to input value.
     Args:
         points: iteratable of point namedtuples
