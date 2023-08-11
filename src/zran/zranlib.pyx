@@ -1,10 +1,9 @@
 # vim: filetype=python
 import struct as py_struct
 import zlib
-import warnings
-from collections import namedtuple
+from dataclasses import dataclass
 from operator import attrgetter
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 import cython
 from cython.cimports import zran
@@ -17,7 +16,6 @@ from cython.cimports.posix.types import off_t
 
 WINDOW_LENGTH = 32768
 GZ_WBITS = 31
-Point = namedtuple("Point", "outloc inloc bits window")
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -25,7 +23,9 @@ class ZranError(Exception):
     pass
 
 
-def check_for_error(return_code):
+def check_for_error(return_code: int):
+    """Check the return code of a zran function and raise an exception if it is an error code."""
+
     error_codes = {
         "Z_ERRNO": -1,
         "Z_STREAM_ERROR": -2,
@@ -50,8 +50,23 @@ def check_for_error(return_code):
             raise ZranError(f"zran: failed with error code {return_code}")
 
 
+@dataclass(frozen=True)
+class Point:
+    """A dataclass representing a point in a zran index."""
+
+    outloc: int
+    inloc: int
+    bits: int
+    window: bytes
+
+    def __repr__(self):
+        return f'Point(outloc={self.outloc}, inloc={self.inloc}, bits={self.bits})'
+
+
 @cython.cclass
 class WrapperDeflateIndex:
+    """Wrapper for zran.deflate_index struct."""
+
     _ptr: cython.pointer(zran.deflate_index)
     ptr_owner: cython.bint
 
@@ -97,6 +112,7 @@ class WrapperDeflateIndex:
     @staticmethod
     @cython.cfunc
     def from_ptr(_ptr: cython.pointer(zran.deflate_index), owner: cython.bint = False) -> WrapperDeflateIndex:  # noqa
+        """Construct a WrapperDeflateIndex object from a pointer pointing to a deflate_index struct in memory"""
         wrapper = cython.declare(WrapperDeflateIndex, WrapperDeflateIndex.__new__(WrapperDeflateIndex))
         wrapper._ptr = _ptr
         wrapper.ptr_owner = owner
@@ -105,6 +121,7 @@ class WrapperDeflateIndex:
     @staticmethod
     @cython.cfunc
     def from_python_index(mode: int, length: int, have: int, points: List[Point]):
+        """Construct a WrapperDeflateIndex object from a pure-python Index object"""
         # Can't use PyMem_Malloc here because free operation is controlled by C library
         _new_ptr = cython.declare(
             cython.pointer(zran.deflate_index),
@@ -134,6 +151,16 @@ class WrapperDeflateIndex:
 
 
 def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDeflateIndex:
+    """Build a zran deflate index from a bytes object containing compressed data.
+
+    Args:
+        input_bytes: A bytes object containing compressed data.
+        span: The number of bytes to read from the input file at a time. Defaults to 2**20.
+
+    Returns:
+        A WrapperDeflateIndex object.
+    """
+
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
     infile = fmemopen(compressed_data, compressed_data_length, b"r")
@@ -148,18 +175,17 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
 
 def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
-    first_bit_zero = index.points[0].bits == 0
-    if index.have > 1:
-        offset_before_second_point = offset < index.points[1].outloc
-    else:
-        offset_before_second_point = False
+    """Decompress a range of bytes from a compressed file.
 
-    if not first_bit_zero and offset_before_second_point:
-        raise ValueError(
-            'When first index bit != 0, offset must be at or after second index point'
-            f' ({index.points[1].outloc} for this index)'
-        )
+    Args:
+        input_bytes: A bytes object containing compressed data.
+        index: An Index object.
+        offset: The offset in the uncompressed data to start reading from.
+        length: The number of bytes to read from the uncompressed data.
 
+    Returns:
+        A bytes object containing the decompressed data.
+    """
     if offset + length > index.uncompressed_size:
         raise ValueError('Offset and length specified would result in reading past the file bounds')
 
@@ -190,9 +216,17 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
 
 class Index:
     def __init__(self, mode: int, compressed_size: int, uncompressed_size: int, have: int, points: Iterable[Point]):
+        """Create a new index object
+
+        mode: The mode of the index
+        compressed_size: The size of the compressed data represented by the index
+        uncompressed_size: The size of the uncompressed data represented by the index
+        have: The number of points in the index
+        points: The points in the index
+        """
+        self.mode = mode
         self.compressed_size = compressed_size
         self.uncompressed_size = uncompressed_size
-        self.mode = mode
         self.have = have
         self.points = points
 
@@ -251,59 +285,46 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts=[], stops=[], remove_last_stop=True):
+    def create_modified_index(self, locations: Iterable[int], end_location: Optional[int] = None):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
-            starts: uncompressed locations to provide indexes before.
-            stops: uncompressed locations to provide indexes after.
-            relative: whether or not the compressed offsets (inloc) should be relative
-                to the modified index (begin at zero). Set to False if creating an index
-                for part of a zip file.
+            locations: A list of uncompressed locations to be included in the new index.
+                       The closes point before each location will be selected.
+            end_location: The uncompressed endpoint of the index. Used to determine file size.
+
         Returns:
             range of compressed data, range of uncompressed data, a modified Index.
         """
-        compressed_offsets = [x.inloc for x in self.points]
-        if not (starts or stops):
-            raise ValueError("Either starts or stops must be specified")
-
-        start_points = [get_closest_point(self.points, x) for x in starts]
-        stop_points = [get_closest_point(self.points, x, greater_than=True) for x in stops]
-        desired_points = sorted(list(set(start_points + stop_points)), key=attrgetter("outloc"))
-
-        start_index = compressed_offsets.index(desired_points[0].inloc)
-        if start_index != 0:
-            # TODO do not need to execute this line if desired_points[0].bits == 0.
-            # Can you modify the data to make this true?
-            desired_points.insert(0, self.points[start_index - 1])
-
-        stop_index = compressed_offsets.index(desired_points[-1].inloc)
-        if stop_index == len(compressed_offsets) - 1:
-            compressed_range = (desired_points[0].inloc, self.compressed_size)
-            uncompressed_range = (desired_points[0].outloc, self.uncompressed_size)
+        max_uncompressed_offset = self.points[-1].outloc
+        if not end_location or end_location > max_uncompressed_offset:
+            outloc_end = self.uncompressed_size
+            inloc_end = self.compressed_size
         else:
-            compressed_range = (desired_points[0].inloc, self.points[stop_index].inloc - 1)
-            uncompressed_range = (desired_points[0].outloc, self.points[stop_index].outloc - 1)
+            endpoint = get_closest_point(self.points, end_location, greater_than=True)
+            outloc_end = endpoint.outloc
+            inloc_end = endpoint.inloc
 
-        inloc_offset = desired_points[0].inloc - compressed_offsets[0]
+        start_points = [get_closest_point(self.points, x) for x in locations]
+        desired_points = sorted(start_points, key=attrgetter("outloc"))
+
+        compressed_range = [desired_points[0].inloc, inloc_end]
+        uncompressed_range = [desired_points[0].outloc, outloc_end]
+
+        inloc_offset = desired_points[0].inloc - self.points[0].inloc
         outloc_offset = desired_points[0].outloc
 
+        # to account for nonzero first point.bits
+        if desired_points[0].outloc != self.points[0].outloc:
+            compressed_range[0] -= 1
+            inloc_offset -= 1
+
         output_points = []
-        for i, point in enumerate(desired_points):
-            if i == 0:
-                window = bytearray(WINDOW_LENGTH)
-            else:
-                window = point.window
-            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, window)
+        for point in desired_points:
+            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, point.window)
             output_points.append(new_point)
 
-        if stops and remove_last_stop:
-            if len(output_points) <= 2:
-                warnings.warn(UserWarning('Indexes must have at least two points, not removing last stop'))
-            else:
-                output_points = output_points[:-1]
-
         modified_index = Index(
-            self.have,
+            self.mode,
             compressed_range[1] - compressed_range[0],
             uncompressed_range[1] - uncompressed_range[0],
             len(output_points),
@@ -312,7 +333,7 @@ class Index:
         return compressed_range, uncompressed_range, modified_index
 
 
-def get_closest_point(points, value, greater_than=False):
+def get_closest_point(points: Iterable[Point], value: int, greater_than: bool = False):
     """Identifies index of closest value in a numpy array to input value.
     Args:
         points: iteratable of point namedtuples
