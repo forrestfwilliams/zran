@@ -280,8 +280,9 @@ class Index:
         outloc_offset = desired_points[0].outloc
 
         # to account for nonzero first point.bits
-        compressed_range[0] -= 1
-        inloc_offset -= 1
+        if desired_points[0].outloc != self.points[0].outloc:
+            compressed_range[0] -= 1
+            inloc_offset -= 1
 
         output_points = []
         for point in desired_points:

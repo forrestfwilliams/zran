@@ -173,7 +173,7 @@ def test_modified_nonzero_first_bits(data, compressed_dfl_data):
     if not nonfirst_zero_bit:
         print('Not enough index points to test this')
 
-    for point in index.points[1:]:
+    for point in index.points:
         start = point.outloc
         compressed_range, uncompressed_range, new_index = index.create_modified_index([start])
         length = uncompressed_range[1] - uncompressed_range[0]
