@@ -154,11 +154,11 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
     else:
         offset_before_second_point = False
 
-    if not first_bit_zero and offset_before_second_point:
-        raise ValueError(
-            'When first index bit != 0, offset must be at or after second index point'
-            f' ({index.points[1].outloc} for this index)'
-        )
+    # if not first_bit_zero and offset_before_second_point:
+    #     raise ValueError(
+    #         'When first index bit != 0, offset must be at or after second index point'
+    #         f' ({index.points[1].outloc} for this index)'
+    #     )
 
     if offset + length > index.uncompressed_size:
         raise ValueError('Offset and length specified would result in reading past the file bounds')
@@ -271,10 +271,10 @@ class Index:
         desired_points = sorted(list(set(start_points + stop_points)), key=attrgetter("outloc"))
 
         start_index = compressed_offsets.index(desired_points[0].inloc)
-        if start_index != 0:
-            # TODO do not need to execute this line if desired_points[0].bits == 0.
-            # Can you modify the data to make this true?
-            desired_points.insert(0, self.points[start_index - 1])
+        # if start_index != 0:
+        #     # TODO do not need to execute this line if desired_points[0].bits == 0.
+        #     # Can you modify the data to make this true?
+        #     desired_points.insert(0, self.points[start_index - 1])
 
         stop_index = compressed_offsets.index(desired_points[-1].inloc)
         if stop_index == len(compressed_offsets) - 1:
@@ -290,7 +290,8 @@ class Index:
         output_points = []
         for i, point in enumerate(desired_points):
             if i == 0:
-                window = bytearray(WINDOW_LENGTH)
+                # window = bytearray(WINDOW_LENGTH)
+                window = point.window
             else:
                 window = point.window
             new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, window)
