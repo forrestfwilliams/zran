@@ -163,7 +163,7 @@ def test_modified_after_end_decompress(data, compressed_dfl_data):
 
 
 def test_modified_nonzero_first_bits(data, compressed_dfl_data):
-    index = zran.Index.create_index(compressed_dfl_data, span=2**17)
+    index = zran.Index.create_index(compressed_dfl_data, span=2**16)
     zero_bit_loc = []
     nonzero_bit_loc = []
     for i, point in enumerate(index.points):
@@ -173,16 +173,22 @@ def test_modified_nonzero_first_bits(data, compressed_dfl_data):
             nonzero_bit_loc.append(i)
 
     if len(zero_bit_loc) > 1 and len(nonzero_bit_loc) > 1:
-        for loc_list in [zero_bit_loc, nonzero_bit_loc]:
-            start = index.points[loc_list[1]].outloc
-            stop = len(data)
-            compressed_range, uncompressed_range, new_index = index.create_modified_index([start], [stop], False)
-            length = stop - start
-            test_data = zran.decompress(
-                compressed_dfl_data[index.points[loc_list[1]].inloc - 1 :], new_index, 0, length
-            )
-            true_data = data[start:stop]
-            assert true_data == test_data
+        for loc_list in [nonzero_bit_loc, zero_bit_loc]:
+            for i in loc_list:
+                second_index = loc_list[1]
+                start = index.points[second_index].outloc
+                compressed_range, uncompressed_range, new_index = index.create_modified_index([start])
+                length = uncompressed_range[1] - uncompressed_range[0]
+                test_data = zran.decompress(
+                    compressed_dfl_data[compressed_range[0] : compressed_range[1]],
+                    new_index,
+                    0,
+                    length,
+                )
+                true_data = data[uncompressed_range[0] : uncompressed_range[1]]
+                assert true_data == test_data
+    else:
+        print('Not enough index points to test this')
 
 
 @pytest.mark.skip(reason='Integration test. Only run if testing Sentinel-1 SLC burst compatibility')

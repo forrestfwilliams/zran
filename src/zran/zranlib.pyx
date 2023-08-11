@@ -148,11 +148,11 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
 
 
 def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
-    first_bit_zero = index.points[0].bits == 0
-    if index.have > 1:
-        offset_before_second_point = offset < index.points[1].outloc
-    else:
-        offset_before_second_point = False
+    # first_bit_zero = index.points[0].bits == 0
+    # if index.have > 1:
+    #     offset_before_second_point = offset < index.points[1].outloc
+    # else:
+    #     offset_before_second_point = False
 
     # if not first_bit_zero and offset_before_second_point:
     #     raise ValueError(
@@ -160,8 +160,8 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
     #         f' ({index.points[1].outloc} for this index)'
     #     )
 
-    if offset + length > index.uncompressed_size:
-        raise ValueError('Offset and length specified would result in reading past the file bounds')
+    # if offset + length > index.uncompressed_size:
+    #     raise ValueError('Offset and length specified would result in reading past the file bounds')
 
     compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
     compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
@@ -251,60 +251,45 @@ class Index:
     def to_c_index(self):
         return WrapperDeflateIndex.from_python_index(self.mode, self.uncompressed_size, self.have, self.points)
 
-    def create_modified_index(self, starts=[], stops=[], remove_last_stop=True):
+    def create_modified_index(self, locations, end_location=None):
         """Modifies a set of access Points so that they only contain the needed data
         Args:
-            starts: uncompressed locations to provide indexes before.
-            stops: uncompressed locations to provide indexes after.
-            relative: whether or not the compressed offsets (inloc) should be relative
-                to the modified index (begin at zero). Set to False if creating an index
-                for part of a zip file.
+            locations: A list of uncompressed locations to be included in the new index.
+                       The closes point before each location will be selected.
+            end_location: The uncompressed endpoint of the index. Used to determine file size.
+
         Returns:
             range of compressed data, range of uncompressed data, a modified Index.
         """
-        compressed_offsets = [x.inloc for x in self.points]
-        if not (starts or stops):
-            raise ValueError("Either starts or stops must be specified")
-
-        start_points = [get_closest_point(self.points, x) for x in starts]
-        stop_points = [get_closest_point(self.points, x, greater_than=True) for x in stops]
-        desired_points = sorted(list(set(start_points + stop_points)), key=attrgetter("outloc"))
-
-        start_index = compressed_offsets.index(desired_points[0].inloc)
-        # if start_index != 0:
-        #     # TODO do not need to execute this line if desired_points[0].bits == 0.
-        #     # Can you modify the data to make this true?
-        #     desired_points.insert(0, self.points[start_index - 1])
-
-        stop_index = compressed_offsets.index(desired_points[-1].inloc)
-        if stop_index == len(compressed_offsets) - 1:
-            compressed_range = (desired_points[0].inloc, self.compressed_size)
-            uncompressed_range = (desired_points[0].outloc, self.uncompressed_size)
+        max_uncompressed_offset = self.points[-1].outloc
+        if not end_location or end_location > max_uncompressed_offset:
+            outloc_end = self.uncompressed_size
+            inloc_end = self.compressed_size
         else:
-            compressed_range = (desired_points[0].inloc, self.points[stop_index].inloc - 1)
-            uncompressed_range = (desired_points[0].outloc, self.points[stop_index].outloc - 1)
+            endpoint = get_closest_point(self.points, end_location, greater_than=True)
+            outloc_end = endpoint.outloc
+            inloc_end = endpoint.inloc
 
-        inloc_offset = desired_points[0].inloc - compressed_offsets[0] - 1
+        start_points = [get_closest_point(self.points, x) for x in locations]
+        desired_points = sorted(start_points, key=attrgetter("outloc"))
+
+        compressed_range = [desired_points[0].inloc, inloc_end]
+        uncompressed_range = [desired_points[0].outloc, outloc_end]
+
+        inloc_offset = desired_points[0].inloc - self.points[0].inloc
         outloc_offset = desired_points[0].outloc
 
+        # to account for nonzero first point.bits
+        compressed_range[0] -= 1
+        inloc_offset -= 1
+
         output_points = []
-        for i, point in enumerate(desired_points):
-            if i == 0:
-                # window = bytearray(WINDOW_LENGTH)
-                window = point.window
-            else:
-                window = point.window
-            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, window)
+        for point in desired_points:
+            new_point = Point(point.outloc - outloc_offset, point.inloc - inloc_offset, point.bits, point.window)
             output_points.append(new_point)
 
-        if stops and remove_last_stop:
-            if len(output_points) <= 2:
-                warnings.warn(UserWarning('Indexes must have at least two points, not removing last stop'))
-            else:
-                output_points = output_points[:-1]
-
         modified_index = Index(
-            self.have,
+            self.mode,
             compressed_range[1] - compressed_range[0],
             uncompressed_range[1] - uncompressed_range[0],
             len(output_points),
