@@ -37,8 +37,8 @@ def test_an_index(point_index, index, uncompressed_data):
 
 try:
     test_an_index(zero_bit_loc[1], index, uncompressed_data)
-except zran.ZranError:
-    print('Failure')
+except zran.ZranError as e:
+    print(f'Failure with message: {e}')
 
 try:
     test_an_index(nonzero_bit_loc[1], index, uncompressed_data)
