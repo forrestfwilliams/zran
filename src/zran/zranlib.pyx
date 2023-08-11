@@ -1,7 +1,7 @@
 # vim: filetype=python
 import struct as py_struct
 import zlib
-from collections import namedtuple
+from dataclasses import dataclass
 from operator import attrgetter
 from typing import Iterable, List, Optional
 
@@ -16,7 +16,6 @@ from cython.cimports.posix.types import off_t
 
 WINDOW_LENGTH = 32768
 GZ_WBITS = 31
-Point = namedtuple("Point", "outloc inloc bits window")
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Cython Functionality~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -51,9 +50,23 @@ def check_for_error(return_code: int):
             raise ZranError(f"zran: failed with error code {return_code}")
 
 
+@dataclass(frozen=True)
+class Point:
+    """A dataclass representing a point in a zran index."""
+
+    outloc: int
+    inloc: int
+    bits: int
+    window: bytes
+
+    def __repr__(self):
+        return f'Point(outloc={self.outloc}, inloc={self.inloc}, bits={self.bits})'
+
+
 @cython.cclass
 class WrapperDeflateIndex:
     """Wrapper for zran.deflate_index struct."""
+
     _ptr: cython.pointer(zran.deflate_index)
     ptr_owner: cython.bint
 
@@ -203,7 +216,7 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
 
 class Index:
     def __init__(self, mode: int, compressed_size: int, uncompressed_size: int, have: int, points: Iterable[Point]):
-        """ Create a new index object
+        """Create a new index object
 
         mode: The mode of the index
         compressed_size: The size of the compressed data represented by the index
