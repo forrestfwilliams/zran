@@ -12,6 +12,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `get_closest_point` to use `bisect`, speeding up function.
 
 ### Added
+* Support for file-like operations with `decompress` and `Index.create_index`.
 * Comparison method to `Point` class to simplify sort implementation.
 
 ## [0.1.0]

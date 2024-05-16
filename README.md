@@ -26,14 +26,15 @@ To create and save the index:
 import zran
 
 with open('compressed.gz', 'rb') as f:
-    compressed_file = f.read()
-    index = zran.Index.create_index(compressed_file)
+    index = zran.Index.create_index(f)
 ```
 This `Index` can be written to a file (`index.to_file('index.dflidx')`), or directly passed to `zran.deompress`:
 ```python
 start = 1000
 length = 2000
-data = zran.decompress(compressed_file, index, start, length)
+
+with open(compressed_file, 'rb') as f:
+    data = zran.decompress(f, index, start, length)
 ```
 
 That's it!
@@ -57,4 +58,3 @@ If you prefer to work in the C programming language, you may want to work direct
 * Greater visibility into the contents of indexes
 * Compression of the indexes when written to a file, leading to smaller index file sizes
 * The ability to modify the points contained within an index via the `Index.create_modified_index()` method
-

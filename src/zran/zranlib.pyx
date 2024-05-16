@@ -1,20 +1,22 @@
 # vim: filetype=python
 import bisect
+import os
 import struct as py_struct
 import zlib
 from dataclasses import dataclass, field
 from functools import total_ordering
 from operator import attrgetter
-from typing import Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, Union
 
 import cython
 from cython.cimports import zran
 from cython.cimports.cpython.bytes import PyBytes_AsString, PyBytes_Size
 from cython.cimports.cpython.mem import PyMem_Free, PyMem_Malloc
-from cython.cimports.libc.stdio import fclose
+from cython.cimports.libc.stdio import FILE, fclose
 from cython.cimports.libc.stdlib import malloc
-from cython.cimports.posix.stdio import fmemopen
+from cython.cimports.posix.stdio import fdopen, fmemopen
 from cython.cimports.posix.types import off_t
+from cython.cimports.posix.unistd import dup
 
 WINDOW_LENGTH = 32768
 GZ_WBITS = 31
@@ -50,6 +52,17 @@ def check_for_error(return_code: int):
             raise ZranError("zran: failed with Z_STREAM_ERROR")
         else:
             raise ZranError(f"zran: failed with error code {return_code}")
+
+
+@cython.cfunc
+def coerce_to_posix_stream(input: Union[bytes, Any]) -> cython.pointer(FILE):
+    if isinstance(input, bytes):
+        compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input))
+        compressed_data_length = cython.declare(off_t, PyBytes_Size(input))
+        fh = fmemopen(compressed_data, compressed_data_length, b"rb")
+    else:
+        fh = fdopen(dup(input.fileno()), b"rb")
+    return fh
 
 
 @total_ordering
@@ -153,20 +166,18 @@ class WrapperDeflateIndex:
         return WrapperDeflateIndex.from_ptr(_new_ptr, owner=True)
 
 
-def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDeflateIndex:
+def build_deflate_index(input: Union[bytes, Any], span: off_t = 2**20) -> WrapperDeflateIndex:
     """Build a zran deflate index from a bytes object containing compressed data.
 
     Args:
-        input_bytes: A bytes object containing compressed data.
+        input: A bytes object or a file object containing compressed data.
         span: The number of bytes to read from the input file at a time. Defaults to 2**20.
 
     Returns:
         A WrapperDeflateIndex object.
     """
 
-    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
-    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
-    infile = fmemopen(compressed_data, compressed_data_length, b"r")
+    infile = coerce_to_posix_stream(input)
 
     built = cython.declare(cython.pointer(zran.deflate_index))
 
@@ -177,11 +188,11 @@ def build_deflate_index(input_bytes: bytes, span: off_t = 2**20) -> WrapperDefla
     return index
 
 
-def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> bytes:  # noqa
+def decompress(input: Union[bytes, Any], index: Index, offset: off_t, length: int) -> bytes:  # noqa
     """Decompress a range of bytes from a compressed file.
 
     Args:
-        input_bytes: A bytes object containing compressed data.
+        input: A bytes object or file object containing compressed data.
         index: An Index object.
         offset: The offset in the uncompressed data to start reading from.
         length: The number of bytes to read from the uncompressed data.
@@ -192,9 +203,7 @@ def decompress(input_bytes: bytes, index: Index, offset: off_t, length: int) -> 
     if offset + length > index.uncompressed_size:
         raise ValueError("Offset and length specified would result in reading past the file bounds")
 
-    compressed_data = cython.declare(cython.p_char, PyBytes_AsString(input_bytes))
-    compressed_data_length = cython.declare(off_t, PyBytes_Size(input_bytes))
-    infile = fmemopen(compressed_data, compressed_data_length, b"r")
+    infile = coerce_to_posix_stream(input)
 
     rebuilt_index = cython.declare(WrapperDeflateIndex, index.to_c_index())
     uncompressed_data_length = (length + 1) * cython.sizeof(cython.uchar)
@@ -234,9 +243,15 @@ class Index:
         self.points = points
 
     @staticmethod
-    def create_index(input_bytes: bytes, span: int = 2**20):
-        c_index = build_deflate_index(input_bytes, span=span)
-        new_index = Index(c_index.mode, len(input_bytes), c_index.length, c_index.have, c_index.points)
+    def create_index(input: Union[bytes, Any], span: int = 2**20):
+        if isinstance(input, bytes):
+            input_len = len(input)
+        else:
+            pos = input.seek(0, os.SEEK_CUR)
+            input_len = input.seek(0, os.SEEK_END)
+            input.seek(pos, os.SEEK_SET)
+        c_index = build_deflate_index(input, span=span)
+        new_index = Index(c_index.mode, input_len, c_index.length, c_index.have, c_index.points)
         del c_index
         return new_index
 
