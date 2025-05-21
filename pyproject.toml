@@ -31,6 +31,8 @@ classifiers=[
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: Implementation :: CPython",
     "Operating System :: POSIX",
@@ -56,7 +58,7 @@ addopts = "-ra -q"
 testpaths = ["tests"]
 
 [tool.cibuildwheel]
-build = "cp3{8,9,10,11}-*"
+build = "cp3{8,9,10,11,12,13}-*"
 test-requires = "pytest"
 test-command = "pytest {package}/tests"
 
